@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Card;
 import 'package:intl/intl.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../models/task.dart';
+import '../services/ai_service.dart';
 
 class TaskFormData {
   const TaskFormData({
@@ -36,15 +38,21 @@ class TaskDialog extends StatefulWidget {
 }
 
 class _TaskDialogState extends State<TaskDialog> {
-  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _assignedToController;
 
   late String _priority;
   DateTime? _dueDate;
+  bool _isAiLoading = false;
+  String? _aiSuggestion;
 
   static const _priorities = ['niedrig', 'mittel', 'hoch'];
+  static const _priorityLabels = {
+    'niedrig': 'Niedrig',
+    'mittel': 'Mittel',
+    'hoch': 'Hoch',
+  };
 
   @override
   void initState() {
@@ -67,85 +75,197 @@ class _TaskDialogState extends State<TaskDialog> {
     super.dispose();
   }
 
+  Future<void> _askAi() async {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          description: Text('Bitte zuerst einen Titel eingeben.'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _isAiLoading = true;
+      _aiSuggestion = null;
+    });
+    try {
+      final suggestion = await AiService.suggestPriority(
+        title,
+        _descriptionController.text.trim(),
+      );
+      setState(() => _aiSuggestion = suggestion);
+    } catch (_) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast.destructive(
+            description: Text('KI-Vorschlag fehlgeschlagen.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isAiLoading = false);
+    }
+  }
+
+  void _applyAiSuggestion() {
+    if (_aiSuggestion == null) return;
+    final lower = _aiSuggestion!.toLowerCase();
+    String? matched;
+    for (final p in _priorities) {
+      if (lower.contains(p)) {
+        matched = p;
+        break;
+      }
+    }
+    if (matched != null) {
+      setState(() {
+        _priority = matched!;
+        _aiSuggestion = null;
+      });
+      ShadToaster.of(context).show(
+        ShadToast(
+          description: Text('Priorität auf "${_priorityLabels[matched]}" gesetzt.'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.isEdit ? 'Aufgabe bearbeiten' : 'Aufgabe erstellen'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    final theme = ShadTheme.of(context);
+    final cs = theme.colorScheme;
+
+    return ShadDialog(
+      title: Text(widget.isEdit ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'),
+      description: Text(
+        widget.isEdit
+            ? 'Ändere die Details dieser Aufgabe.'
+            : 'Füge eine neue Aufgabe zur Gruppe hinzu.',
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ShadInput(
+            controller: _titleController,
+            placeholder: const Text('Titel *'),
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(LucideIcons.type, size: 14, color: cs.mutedForeground),
+            ),
+          ),
+          const SizedBox(height: 10),
+          ShadInput(
+            controller: _descriptionController,
+            maxLines: 3,
+            placeholder: const Text('Beschreibung (optional)'),
+          ),
+          const SizedBox(height: 10),
+          ShadSelect<String>(
+            placeholder: const Text('Priorität wählen'),
+            initialValue: _priority,
+            onChanged: (v) { if (v != null) setState(() => _priority = v); },
+            options: _priorities
+                .map((p) => ShadOption(value: p, child: Text(_priorityLabels[p]!)))
+                .toList(),
+            selectedOptionBuilder: (ctx, v) => Text(_priorityLabels[v] ?? v),
+          ),
+          const SizedBox(height: 10),
+          ShadInput(
+            controller: _assignedToController,
+            placeholder: const Text('Zugewiesen an'),
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(LucideIcons.userRound, size: 14, color: cs.mutedForeground),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
             children: [
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Titel *'),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Bitte Titel eingeben';
-                  }
-                  return null;
-                },
+              Icon(LucideIcons.calendar, size: 14, color: cs.mutedForeground),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _dueDate == null
+                      ? 'Kein Fälligkeitsdatum'
+                      : 'Fällig: ${DateFormat('dd.MM.yyyy').format(_dueDate!)}',
+                  style: theme.textTheme.muted,
+                ),
               ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _descriptionController,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Beschreibung'),
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: _priority,
-                items: _priorities
-                    .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _priority = value);
-                  }
-                },
-                decoration: const InputDecoration(labelText: 'Priorität'),
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _assignedToController,
-                decoration: const InputDecoration(labelText: 'Zugewiesen an'),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _dueDate == null
-                          ? 'Keine Fälligkeit'
-                          : 'Fällig: ${DateFormat('dd.MM.yyyy').format(_dueDate!)}',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _pickDate,
-                    child: const Text('Datum wählen'),
-                  ),
-                ],
+              if (_dueDate != null)
+                ShadButton.ghost(
+                  size: ShadButtonSize.sm,
+                  onPressed: () => setState(() => _dueDate = null),
+                  child: Icon(LucideIcons.x, size: 14),
+                ),
+              ShadButton.outline(
+                size: ShadButtonSize.sm,
+                onPressed: _pickDate,
+                child: const Text('Datum'),
               ),
             ],
           ),
-        ),
-      ),
-      actions: [
-        if (_dueDate != null)
-          TextButton(
-            onPressed: () => setState(() => _dueDate = null),
-            child: const Text('Datum entfernen'),
+          const SizedBox(height: 12),
+          ShadButton.secondary(
+            onPressed: _isAiLoading ? null : _askAi,
+            leading: _isAiLoading
+                ? const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(LucideIcons.sparkles, size: 14),
+            child: Text(_isAiLoading ? 'KI analysiert...' : 'KI fragen'),
           ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Abbrechen'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(widget.isEdit ? 'Speichern' : 'Erstellen'),
-        ),
-      ],
+          if (_aiSuggestion != null) ...[
+            const SizedBox(height: 10),
+            ShadCard(
+              backgroundColor: cs.accent,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.sparkles, size: 14, color: cs.primary),
+                      const SizedBox(width: 6),
+                      Text('KI-Vorschlag', style: theme.textTheme.small),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(_aiSuggestion!, style: theme.textTheme.muted),
+                  const SizedBox(height: 8),
+                  ShadButton(
+                    size: ShadButtonSize.sm,
+                    onPressed: _applyAiSuggestion,
+                    leading: Icon(LucideIcons.check, size: 12),
+                    child: const Text('Übernehmen'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              ShadButton.ghost(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Abbrechen'),
+              ),
+              const SizedBox(width: 8),
+              ShadButton(
+                onPressed: _submit,
+                leading: Icon(
+                  widget.isEdit ? LucideIcons.save : LucideIcons.plus,
+                  size: 14,
+                ),
+                child: Text(widget.isEdit ? 'Speichern' : 'Erstellen'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -157,21 +277,21 @@ class _TaskDialogState extends State<TaskDialog> {
       firstDate: DateTime(now.year - 2),
       lastDate: DateTime(now.year + 5),
     );
-
-    if (selected != null) {
-      setState(() => _dueDate = selected);
-    }
+    if (selected != null) setState(() => _dueDate = selected);
   }
 
   void _submit() {
-    if (!_formKey.currentState!.validate()) {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(description: Text('Bitte Titel eingeben.')),
+      );
       return;
     }
-
     final assigned = _assignedToController.text.trim();
     Navigator.of(context).pop(
       TaskFormData(
-        title: _titleController.text.trim(),
+        title: title,
         description: _descriptionController.text.trim(),
         priority: _priority,
         dueDate: _dueDate,

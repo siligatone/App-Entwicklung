@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Card;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
+import 'firebase_options.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -13,7 +16,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     final appState = await AppState.load();
 
     runApp(
@@ -39,11 +42,12 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final resolvedHome = home ?? const AuthGate();
 
-    return MaterialApp(
+    return ShadApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.indigo,
-        useMaterial3: true,
+      theme: ShadThemeData(
+        brightness: Brightness.light,
+        colorScheme: const ShadSlateColorScheme.light(),
+        textTheme: ShadTextTheme.fromGoogleFont(GoogleFonts.inter),
       ),
       home: resolvedHome,
     );

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Card;
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,7 +10,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
@@ -25,80 +25,92 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = ShadTheme.of(context);
+
     return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Card(
-            margin: const EdgeInsets.all(16),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.colorScheme.primary,
+              theme.colorScheme.ring,
+            ],
+          ),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Form(
-                key: _formKey,
+              padding: const EdgeInsets.all(16),
+              child: ShadCard(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'StudyTask Login',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                      textAlign: TextAlign.center,
+                    Center(
+                      child: Icon(
+                        LucideIcons.clipboardCheck,
+                        size: 40,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Melde dich an, um deine Gruppe und Aufgaben zu synchronisieren.',
+                      'StudyTask',
+                      style: theme.textTheme.h2,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                    const SizedBox(height: 20),
-                    TextFormField(
+                    const SizedBox(height: 6),
+                    Text(
+                      _isLoginMode
+                          ? 'Melde dich an, um deine Gruppe und Aufgaben zu synchronisieren.'
+                          : 'Erstelle ein Konto, um loszulegen.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.muted,
+                    ),
+                    const SizedBox(height: 24),
+                    ShadInput(
                       controller: _emailController,
-                      decoration: const InputDecoration(
-                        labelText: 'E-Mail',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
+                      placeholder: const Text('E-Mail'),
                       keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        if (value == null || !value.contains('@')) {
-                          return 'Bitte gültige E-Mail eingeben';
-                        }
-                        return null;
-                      },
+                      leading: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(LucideIcons.mail, size: 16, color: theme.colorScheme.mutedForeground),
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
+                    ShadInput(
                       controller: _passwordController,
+                      placeholder: const Text('Passwort'),
                       obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Passwort',
-                        prefixIcon: Icon(Icons.lock_outline),
+                      leading: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(LucideIcons.lock, size: 16, color: theme.colorScheme.mutedForeground),
                       ),
-                      validator: (value) {
-                        if (value == null || value.length < 6) {
-                          return 'Mindestens 6 Zeichen';
-                        }
-                        return null;
-                      },
                     ),
                     if (_errorMessage != null) ...[
                       const SizedBox(height: 12),
-                      Text(
-                        _errorMessage!,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      ShadAlert.destructive(
+                        icon: Icon(LucideIcons.circleAlert, size: 16),
+                        title: const Text('Fehler'),
+                        description: Text(_errorMessage!),
                       ),
                     ],
                     const SizedBox(height: 20),
-                    FilledButton(
+                    ShadButton(
                       onPressed: _isLoading ? null : _submit,
                       child: _isLoading
                           ? const SizedBox(
-                              width: 18,
-                              height: 18,
+                              width: 16,
+                              height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : Text(_isLoginMode ? 'Anmelden' : 'Registrieren'),
                     ),
-                    TextButton(
+                    const SizedBox(height: 8),
+                    ShadButton.ghost(
                       onPressed: _isLoading
                           ? null
                           : () => setState(() => _isLoginMode = !_isLoginMode),
@@ -119,7 +131,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (!email.contains('@') || password.length < 6) {
+      setState(() => _errorMessage = 'Bitte gültige E-Mail und mindestens 6 Zeichen Passwort eingeben.');
       return;
     }
 
@@ -130,25 +146,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final auth = FirebaseAuth.instance;
-      final email = _emailController.text.trim();
-      final password = _passwordController.text;
-
       if (_isLoginMode) {
         await auth.signInWithEmailAndPassword(email: email, password: password);
       } else {
-        await auth.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
+        await auth.createUserWithEmailAndPassword(email: email, password: password);
       }
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = e.message ?? 'Authentifizierung fehlgeschlagen');
     } catch (_) {
       setState(() => _errorMessage = 'Unerwarteter Fehler beim Login');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 }

@@ -12,8 +12,11 @@ dependencies:
   firebase_core: 4.9.0
   flutter:
     sdk: flutter
+  google_fonts: ^6.2.1
+  google_generative_ai: ^0.4.6
   intl: ^0.20.2
   provider: ^6.1.5+1
+  shadcn_ui: ^0.54.0
   shared_preferences: ^2.5.5
 
 dev_dependencies:
