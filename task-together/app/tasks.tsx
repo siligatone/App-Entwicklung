@@ -1,43 +1,50 @@
 /**
- * Aufgabenliste — Phase 2A: User-Header + Verbindungstest.
- * Echte Aufgabenliste kommt in Phase 2B.
+ * Aufgabenliste — Echtzeit-Sync aus Firestore.
+ * Zeigt alle Tasks, neueste zuerst. Noch kein Abhaken/Löschen.
  */
 
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../lib/storage';
-import { runConnectionTest } from '../lib/firestore-test';
+import { subscribeToTasks, type Task } from '../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
-
-type ConnectionState = 'idle' | 'loading' | 'success' | 'error';
 
 export default function TasksScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
-  const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
-  const [testDocId, setTestDocId] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Profil laden
   useEffect(() => {
     getCachedProfile().then(setProfile);
   }, []);
 
-  async function handleConnectionTest() {
-    setConnectionState('loading');
-    setTestDocId(null);
-    setErrorMessage(null);
+  // Echtzeit-Listener für Tasks
+  useEffect(() => {
+    const unsubscribe = subscribeToTasks(
+      (newTasks) => {
+        setTasks(newTasks);
+        setLoading(false);
+        setError(null);
+      },
+      (errorMsg) => {
+        setError(errorMsg);
+        setLoading(false);
+      },
+    );
 
-    const result = await runConnectionTest();
-
-    if (result.success && result.docId) {
-      setConnectionState('success');
-      setTestDocId(result.docId);
-    } else {
-      setConnectionState('error');
-      setErrorMessage(result.error ?? 'Unbekannter Fehler');
-    }
-  }
+    return () => unsubscribe();
+  }, []);
 
   return (
     <ScrollView
@@ -68,48 +75,55 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Placeholder-Hinweis */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Phase 2A — Profil aktiv</Text>
-        <Text style={styles.cardText}>
-          Aufgabenliste kommt in Phase 2B.{'\n'}
-          Profil-System und Verbindungstest funktionieren.
-        </Text>
-      </View>
+      {/* Ladezustand */}
+      {loading && (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Aufgaben laden…</Text>
+        </View>
+      )}
 
-      {/* Firestore-Verbindungstest */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Firestore-Verbindungstest</Text>
-        <Text style={styles.cardSubtext}>
-          Schreibt in "dev_checks" — keine Produktionsdaten.
-        </Text>
+      {/* Fehler */}
+      {error && !loading && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>Fehler: {error}</Text>
+        </View>
+      )}
 
-        <TouchableOpacity
-          style={[
-            styles.testButton,
-            connectionState === 'loading' && styles.testButtonDisabled,
-          ]}
-          onPress={handleConnectionTest}
-          disabled={connectionState === 'loading'}
-        >
-          <Text style={styles.testButtonText}>
-            {connectionState === 'loading' ? 'Verbinde...' : 'Verbindung testen'}
+      {/* Leerer Zustand */}
+      {!loading && !error && tasks.length === 0 && (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyEmoji}>📋</Text>
+          <Text style={styles.emptyTitle}>Noch keine Aufgaben</Text>
+          <Text style={styles.emptySubtitle}>
+            Tippe auf + um die erste Aufgabe zu erstellen.
           </Text>
-        </TouchableOpacity>
+        </View>
+      )}
 
-        {connectionState === 'success' && (
-          <View style={styles.resultSuccess}>
-            <Text style={styles.resultSuccessText}>Verbindung erfolgreich</Text>
-            <Text style={styles.resultDocId}>Doc-ID: {testDocId}</Text>
+      {/* Task-Liste */}
+      {!loading && tasks.map((task) => (
+        <View key={task.id} style={styles.taskCard}>
+          <View style={styles.taskHeader}>
+            <View style={styles.taskStatusDot} />
+            <Text style={styles.taskTitle} numberOfLines={2}>
+              {task.title}
+            </Text>
           </View>
-        )}
 
-        {connectionState === 'error' && (
-          <View style={styles.resultError}>
-            <Text style={styles.resultErrorText}>Fehler: {errorMessage}</Text>
+          {task.description !== '' && (
+            <Text style={styles.taskDescription} numberOfLines={3}>
+              {task.description}
+            </Text>
+          )}
+
+          <View style={styles.taskFooter}>
+            <Text style={styles.taskCreator}>
+              {task.createdBy.emoji} {task.createdBy.displayName}
+            </Text>
           </View>
-        )}
-      </View>
+        </View>
+      ))}
     </ScrollView>
   );
 }
@@ -123,6 +137,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     paddingBottom: Spacing.xxl,
   },
+  // --- Header ---
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -175,78 +190,92 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     marginTop: -2,
   },
-  card: {
+  // --- Zustände ---
+  centerBox: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xxl,
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
+  },
+  errorBox: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: BorderRadius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.danger,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  errorText: {
+    color: Colors.danger,
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xxl,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: Spacing.md,
+  },
+  emptyTitle: {
+    fontSize: Typography.sizeLG,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  emptySubtitle: {
+    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+  },
+  // --- Task-Karten ---
+  taskCard: {
     backgroundColor: Colors.backgroundCard,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
     ...Shadows.sm,
   },
-  cardLabel: {
-    fontSize: Typography.sizeSM,
-    fontWeight: Typography.weightSemiBold,
-    color: Colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.xs,
+  taskHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
-  cardText: {
+  taskStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.primary,
+    marginTop: 6,
+    marginRight: Spacing.sm,
+  },
+  taskTitle: {
+    flex: 1,
     fontSize: Typography.sizeMD,
-    color: Colors.textSecondary,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.textPrimary,
     lineHeight: 22,
   },
-  cardSubtext: {
+  taskDescription: {
     fontSize: Typography.sizeSM,
     color: Colors.textTertiary,
-    marginBottom: Spacing.md,
     lineHeight: 20,
+    marginTop: Spacing.xs,
+    marginLeft: 10 + Spacing.sm, // aligned with title (dot width + gap)
   },
-  testButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
+  taskFooter: {
+    flexDirection: 'row',
     alignItems: 'center',
-    minHeight: MIN_TOUCH_TARGET,
-    justifyContent: 'center',
-  },
-  testButtonDisabled: {
-    opacity: 0.6,
-  },
-  testButtonText: {
-    color: Colors.textOnPrimary,
-    fontWeight: Typography.weightSemiBold,
-    fontSize: Typography.sizeMD,
-  },
-  resultSuccess: {
     marginTop: Spacing.sm,
-    padding: Spacing.sm,
-    backgroundColor: '#F0FFF4',
-    borderRadius: BorderRadius.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.success,
+    paddingTop: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.separatorOpaque,
   },
-  resultSuccessText: {
-    color: Colors.success,
-    fontWeight: Typography.weightSemiBold,
-    fontSize: Typography.sizeSM,
-  },
-  resultDocId: {
-    color: Colors.textTertiary,
+  taskCreator: {
     fontSize: Typography.sizeXS,
-    marginTop: 2,
-    fontFamily: 'monospace',
-  },
-  resultError: {
-    marginTop: Spacing.sm,
-    padding: Spacing.sm,
-    backgroundColor: '#FFF5F5',
-    borderRadius: BorderRadius.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.danger,
-  },
-  resultErrorText: {
-    color: Colors.danger,
-    fontWeight: Typography.weightSemiBold,
-    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
   },
 });
