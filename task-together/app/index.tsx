@@ -1,13 +1,19 @@
 /**
- * Entry Point.
- * Prüft ob eine userId in AsyncStorage existiert.
- * Leitet weiter zu Onboarding (neu) oder Tasks (bekannt).
+ * Entry Point — Redirect-Logik.
+ *
+ * Prüft:
+ * 1. Existiert eine lokale userId in AsyncStorage?
+ * 2. Existiert ein Firestore-Profil für diese userId?
+ *
+ * Wenn beides ja → /tasks
+ * Wenn userId fehlt oder Firestore-Profil fehlt → /onboarding
  */
 
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getExistingUserId } from '../lib/storage';
+import { getExistingUserId, getCachedProfile, cacheProfile } from '../lib/storage';
+import { getUserProfile } from '../lib/user-service';
 import { Colors } from '../constants/design';
 
 export default function Index() {
@@ -16,9 +22,36 @@ export default function Index() {
   useEffect(() => {
     async function redirect() {
       const userId = await getExistingUserId();
-      if (userId) {
+
+      if (!userId) {
+        router.replace('/onboarding');
+        return;
+      }
+
+      // userId vorhanden — prüfe ob lokaler Cache existiert
+      const cached = await getCachedProfile();
+      if (cached) {
         router.replace('/tasks');
-      } else {
+        return;
+      }
+
+      // Kein lokaler Cache — prüfe Firestore
+      try {
+        const firestoreProfile = await getUserProfile(userId);
+        if (firestoreProfile) {
+          // Profil in Firestore gefunden — Cache aktualisieren
+          await cacheProfile({
+            userId: firestoreProfile.userId,
+            displayName: firestoreProfile.displayName,
+            emoji: firestoreProfile.emoji,
+          });
+          router.replace('/tasks');
+        } else {
+          // userId existiert lokal, aber kein Firestore-Profil → Onboarding
+          router.replace('/onboarding');
+        }
+      } catch {
+        // Netzwerkfehler → mit lokalem Cache versuchen, sonst Onboarding
         router.replace('/onboarding');
       }
     }

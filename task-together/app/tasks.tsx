@@ -1,22 +1,27 @@
 /**
- * Aufgabenliste — Phase 1 Placeholder.
- * Firestore-Listener + echte Aufgaben kommen in Phase 2.
- * Der Verbindungstest läuft hier zur Verifikation.
+ * Aufgabenliste — Phase 2A: User-Header + Verbindungstest.
+ * Echte Aufgabenliste kommt in Phase 2B.
  */
 
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { getCachedProfile, type CachedProfile } from '../lib/storage';
 import { runConnectionTest } from '../lib/firestore-test';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../constants/design';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
 
 type ConnectionState = 'idle' | 'loading' | 'success' | 'error';
 
 export default function TasksScreen() {
   const router = useRouter();
+  const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
   const [testDocId, setTestDocId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCachedProfile().then(setProfile);
+  }, []);
 
   async function handleConnectionTest() {
     setConnectionState('loading');
@@ -39,9 +44,21 @@ export default function TasksScreen() {
       style={styles.scroll}
       contentContainerStyle={styles.container}
     >
-      {/* Header */}
+      {/* Header mit User-Info */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Aufgaben</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>Aufgaben</Text>
+          {profile && (
+            <TouchableOpacity
+              style={styles.userBadge}
+              onPress={() => router.push('/profile')}
+              accessibilityLabel="Profil anzeigen"
+            >
+              <Text style={styles.userEmoji}>{profile.emoji}</Text>
+              <Text style={styles.userName}>{profile.displayName}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => router.push('/create')}
@@ -53,9 +70,10 @@ export default function TasksScreen() {
 
       {/* Placeholder-Hinweis */}
       <View style={styles.card}>
-        <Text style={styles.cardLabel}>Phase 1 — Placeholder</Text>
+        <Text style={styles.cardLabel}>Phase 2A — Profil aktiv</Text>
         <Text style={styles.cardText}>
-          Hier erscheinen in Phase 2 die echten Aufgaben aus Firestore.
+          Aufgabenliste kommt in Phase 2B.{'\n'}
+          Profil-System und Verbindungstest funktionieren.
         </Text>
       </View>
 
@@ -63,7 +81,7 @@ export default function TasksScreen() {
       <View style={styles.card}>
         <Text style={styles.cardLabel}>Firestore-Verbindungstest</Text>
         <Text style={styles.cardSubtext}>
-          Schreibt ein Testdokument in "dev_checks" — keine Produktionsdaten.
+          Schreibt in "dev_checks" — keine Produktionsdaten.
         </Text>
 
         <TouchableOpacity
@@ -81,9 +99,7 @@ export default function TasksScreen() {
 
         {connectionState === 'success' && (
           <View style={styles.resultSuccess}>
-            <Text style={styles.resultSuccessText}>
-              Verbindung erfolgreich
-            </Text>
+            <Text style={styles.resultSuccessText}>Verbindung erfolgreich</Text>
             <Text style={styles.resultDocId}>Doc-ID: {testDocId}</Text>
           </View>
         )}
@@ -91,35 +107,8 @@ export default function TasksScreen() {
         {connectionState === 'error' && (
           <View style={styles.resultError}>
             <Text style={styles.resultErrorText}>Fehler: {errorMessage}</Text>
-            {errorMessage?.includes('Missing or insufficient permissions') && (
-              <Text style={styles.resultHint}>
-                Tipp: Firestore-Regeln noch nicht auf "allow write: if true" gesetzt.
-              </Text>
-            )}
-            {errorMessage?.includes('projectId') && (
-              <Text style={styles.resultHint}>
-                Tipp: .env-Datei prüfen — EXPO_PUBLIC_FIREBASE_PROJECT_ID fehlt.
-              </Text>
-            )}
           </View>
         )}
-      </View>
-
-      {/* Navigation zu anderen Screens */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Navigation (Placeholder)</Text>
-        <TouchableOpacity
-          style={styles.navButton}
-          onPress={() => router.push('/profile')}
-        >
-          <Text style={styles.navButtonText}>→ Profil-Screen</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.navButton}
-          onPress={() => router.push('/onboarding')}
-        >
-          <Text style={styles.navButtonText}>→ Onboarding-Screen</Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -137,18 +126,42 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: Spacing.lg,
     marginTop: Spacing.sm,
+  },
+  headerLeft: {
+    flex: 1,
+    marginRight: Spacing.md,
   },
   headerTitle: {
     fontSize: Typography.sizeXXL,
     fontWeight: Typography.weightBold,
     color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  userBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    alignSelf: 'flex-start',
+    ...Shadows.sm,
+  },
+  userEmoji: {
+    fontSize: 18,
+    marginRight: Spacing.xs,
+  },
+  userName: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textSecondary,
   },
   addButton: {
-    width: 44,
-    height: 44,
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
@@ -193,6 +206,8 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     padding: Spacing.sm,
     alignItems: 'center',
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
   },
   testButtonDisabled: {
     opacity: 0.6,
@@ -233,19 +248,5 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     fontWeight: Typography.weightSemiBold,
     fontSize: Typography.sizeSM,
-  },
-  resultHint: {
-    color: Colors.textSecondary,
-    fontSize: Typography.sizeXS,
-    marginTop: Spacing.xs,
-  },
-  navButton: {
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.separatorOpaque,
-  },
-  navButtonText: {
-    color: Colors.primary,
-    fontSize: Typography.sizeMD,
   },
 });

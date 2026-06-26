@@ -48,8 +48,40 @@ export async function getExistingUserId(): Promise<string | null> {
 }
 
 /**
- * Löscht die gespeicherte userId. Nur für Testzwecke.
+ * Löscht die gespeicherte userId und alle lokalen Profildaten.
+ * Für Profil-Reset und Tests.
  */
-export async function clearUserId(): Promise<void> {
-  await AsyncStorage.removeItem(USER_ID_KEY);
+export async function clearUserData(): Promise<void> {
+  await AsyncStorage.multiRemove([USER_ID_KEY, PROFILE_CACHE_KEY]);
+}
+
+// --- Lokaler Profil-Cache ---
+
+const PROFILE_CACHE_KEY = '@tasktogether/profileCache';
+
+export interface CachedProfile {
+  userId: string;
+  displayName: string;
+  emoji: string;
+}
+
+/**
+ * Speichert Profildaten lokal, damit der Header sofort angezeigt werden kann
+ * ohne auf Firestore zu warten.
+ */
+export async function cacheProfile(profile: CachedProfile): Promise<void> {
+  await AsyncStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+}
+
+/**
+ * Lädt das lokal gecachte Profil. Gibt null zurück, wenn keins existiert.
+ */
+export async function getCachedProfile(): Promise<CachedProfile | null> {
+  try {
+    const data = await AsyncStorage.getItem(PROFILE_CACHE_KEY);
+    if (!data) return null;
+    return JSON.parse(data) as CachedProfile;
+  } catch {
+    return null;
+  }
 }
