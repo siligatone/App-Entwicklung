@@ -1,6 +1,6 @@
 /**
  * Aufgabe erstellen — Titel (Pflicht) + Beschreibung (optional).
- * Speichert in Firestore Collection "tasks" mit createdBy-Snapshot.
+ * Optional: Aufgabe einem anderen Demo-User zuweisen.
  */
 
 import { useEffect, useState } from 'react';
@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../../lib/storage';
-import { createTask } from '../../lib/task-service';
+import { createTask, type UserSnapshot } from '../../lib/task-service';
+import { subscribeToUsers, type UserProfile } from '../../lib/user-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 export default function CreateScreen() {
@@ -27,9 +28,20 @@ export default function CreateScreen() {
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [assignedTo, setAssignedTo] = useState<UserSnapshot | null>(null);
 
   useEffect(() => {
     getCachedProfile().then(setProfile);
+  }, []);
+
+  // Echtzeit-Listener für alle Demo-User
+  useEffect(() => {
+    const unsubscribe = subscribeToUsers(
+      (users) => setAllUsers(users),
+      () => {}, // Fehler still ignorieren — Picker ist optional
+    );
+    return () => unsubscribe();
   }, []);
 
   const trimmedTitle = title.trim();
@@ -49,9 +61,11 @@ export default function CreateScreen() {
           displayName: profile.displayName,
           emoji: profile.emoji,
         },
+        assignedTo,
       );
       setTitle('');
       setDescription('');
+      setAssignedTo(null);
       setSaving(false);
       router.replace('/(tabs)');
     } catch (err) {
@@ -105,6 +119,52 @@ export default function CreateScreen() {
             numberOfLines={4}
             textAlignVertical="top"
           />
+        </View>
+
+        {/* Zuweisen an (optional) */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Zuweisen an (optional)</Text>
+          {(() => {
+            const otherUsers = allUsers.filter((u) => u.userId !== profile?.userId);
+            if (otherUsers.length === 0) {
+              return (
+                <Text style={styles.noUsersHint}>
+                  Noch keine anderen Nutzer verfügbar
+                </Text>
+              );
+            }
+            return (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.userChips}
+              >
+                <TouchableOpacity
+                  style={[styles.userChip, assignedTo === null && styles.userChipSelected]}
+                  onPress={() => setAssignedTo(null)}
+                >
+                  <Text style={[styles.userChipText, assignedTo === null && styles.userChipTextSelected]}>
+                    Niemand
+                  </Text>
+                </TouchableOpacity>
+                {otherUsers.map((user) => (
+                  <TouchableOpacity
+                    key={user.userId}
+                    style={[styles.userChip, assignedTo?.userId === user.userId && styles.userChipSelected]}
+                    onPress={() => setAssignedTo({
+                      userId: user.userId,
+                      displayName: user.displayName,
+                      emoji: user.emoji,
+                    })}
+                  >
+                    <Text style={[styles.userChipText, assignedTo?.userId === user.userId && styles.userChipTextSelected]}>
+                      {user.displayName} {user.emoji}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            );
+          })()}
         </View>
 
         {/* Ersteller-Info */}
@@ -193,6 +253,37 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     paddingTop: Spacing.md,
+  },
+  noUsersHint: {
+    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  userChips: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  userChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.backgroundPrimary,
+    borderWidth: 1.5,
+    borderColor: Colors.separatorOpaque,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  userChipSelected: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  userChipText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textSecondary,
+  },
+  userChipTextSelected: {
+    color: Colors.textOnPrimary,
   },
   creatorInfo: {
     marginBottom: Spacing.lg,

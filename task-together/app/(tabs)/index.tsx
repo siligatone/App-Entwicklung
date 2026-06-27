@@ -251,6 +251,14 @@ export default function TasksScreen() {
                     {task.description}
                   </Text>
                 )}
+
+                {task.assignedTo && (
+                  <View style={styles.assignedBadge}>
+                    <Text style={styles.assignedText}>
+                      Für {task.assignedTo.displayName} {task.assignedTo.emoji}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -445,6 +453,21 @@ const styles = StyleSheet.create({
   },
   taskDescriptionDone: {
     textDecorationLine: 'line-through',
+  },
+  assignedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryLight + '20',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
+  },
+  assignedText: {
+    fontSize: Typography.sizeXS,
+    fontWeight: Typography.weightMedium,
+    color: Colors.primary,
   },
   // --- Footer ---
   taskFooter: {

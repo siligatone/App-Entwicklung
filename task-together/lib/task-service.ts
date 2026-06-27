@@ -50,10 +50,12 @@ const tasksCollection = collection(db, 'tasks');
 
 /**
  * Erstellt einen neuen Task in Firestore.
+ * assignedTo ist optional — wenn nicht angegeben, wird null gespeichert.
  */
 export async function createTask(
   input: CreateTaskInput,
   currentUser: UserSnapshot,
+  assignedTo?: UserSnapshot | null,
 ): Promise<string> {
   const docRef = await addDoc(tasksCollection, {
     title: input.title,
@@ -65,7 +67,9 @@ export async function createTask(
       emoji: currentUser.emoji,
     },
     completedBy: null,
-    assignedTo: null,
+    assignedTo: assignedTo
+      ? { userId: assignedTo.userId, displayName: assignedTo.displayName, emoji: assignedTo.emoji }
+      : null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     completedAt: null,

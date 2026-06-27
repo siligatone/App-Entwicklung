@@ -8,11 +8,14 @@
  */
 
 import {
+  collection,
   doc,
   getDoc,
   setDoc,
   deleteDoc,
+  onSnapshot,
   serverTimestamp,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -61,4 +64,29 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 export async function deleteUserProfile(userId: string): Promise<void> {
   const userRef = doc(db, 'users', userId);
   await deleteDoc(userRef);
+}
+
+/**
+ * Abonniert alle Demo-Profile in Echtzeit.
+ * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
+ */
+export function subscribeToUsers(
+  onUsers: (users: UserProfile[]) => void,
+  onError: (error: string) => void,
+): Unsubscribe {
+  const usersCollection = collection(db, 'users');
+
+  return onSnapshot(
+    usersCollection,
+    (snapshot) => {
+      const users: UserProfile[] = snapshot.docs.map((d) => ({
+        ...d.data(),
+        userId: d.id,
+      })) as UserProfile[];
+      onUsers(users);
+    },
+    (error) => {
+      onError(error.message);
+    },
+  );
 }
