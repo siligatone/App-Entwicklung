@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../lib/storage';
-import { subscribeToTasks, completeTask, type Task } from '../lib/task-service';
+import { subscribeToTasks, completeTask, reopenTask, type Task } from '../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
 
 export default function TasksScreen() {
@@ -25,7 +25,7 @@ export default function TasksScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   // Profil laden
   useEffect(() => {
@@ -49,28 +49,33 @@ export default function TasksScreen() {
     return () => unsubscribe();
   }, []);
 
-  async function handleComplete(taskId: string) {
-    if (!profile || completingIds.has(taskId)) return;
+  async function handleToggle(task: Task) {
+    if (!profile || togglingIds.has(task.id)) return;
 
-    setCompletingIds((prev) => new Set(prev).add(taskId));
+    setTogglingIds((prev) => new Set(prev).add(task.id));
 
     try {
-      await completeTask(taskId, {
-        userId: profile.userId,
-        displayName: profile.displayName,
-        emoji: profile.emoji,
-      });
+      if (task.done) {
+        await reopenTask(task.id);
+      } else {
+        await completeTask(task.id, {
+          userId: profile.userId,
+          displayName: profile.displayName,
+          emoji: profile.emoji,
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      const action = task.done ? 'wieder geöffnet' : 'abgehakt';
       if (Platform.OS === 'web') {
-        alert(`Fehler: ${message}`);
+        alert(`Aufgabe konnte nicht ${action} werden: ${message}`);
       } else {
-        Alert.alert('Fehler', `Aufgabe konnte nicht abgehakt werden: ${message}`);
+        Alert.alert('Fehler', `Aufgabe konnte nicht ${action} werden: ${message}`);
       }
     } finally {
-      setCompletingIds((prev) => {
+      setTogglingIds((prev) => {
         const next = new Set(prev);
-        next.delete(taskId);
+        next.delete(task.id);
         return next;
       });
     }
@@ -133,7 +138,7 @@ export default function TasksScreen() {
 
       {/* Task-Liste */}
       {!loading && tasks.map((task) => {
-        const isCompleting = completingIds.has(task.id);
+        const isToggling = togglingIds.has(task.id);
 
         return (
           <View
@@ -141,27 +146,27 @@ export default function TasksScreen() {
             style={[styles.taskCard, task.done && styles.taskCardDone]}
           >
             <View style={styles.taskRow}>
-              {/* Check-Button */}
-              {!task.done ? (
-                <TouchableOpacity
-                  style={styles.checkButton}
-                  onPress={() => handleComplete(task.id)}
-                  disabled={isCompleting}
-                  accessibilityLabel={`Aufgabe "${task.title}" abhaken`}
-                >
-                  {isCompleting ? (
-                    <ActivityIndicator size="small" color={Colors.primary} />
-                  ) : (
-                    <View style={styles.checkCircle} />
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.checkButton}>
+              {/* Check-Button — offen und erledigt antippbar */}
+              <TouchableOpacity
+                style={styles.checkButton}
+                onPress={() => handleToggle(task)}
+                disabled={isToggling}
+                accessibilityLabel={
+                  task.done
+                    ? `Aufgabe "${task.title}" wieder öffnen`
+                    : `Aufgabe "${task.title}" abhaken`
+                }
+              >
+                {isToggling ? (
+                  <ActivityIndicator size="small" color={task.done ? Colors.success : Colors.primary} />
+                ) : task.done ? (
                   <View style={styles.checkCircleDone}>
                     <Text style={styles.checkMark}>✓</Text>
                   </View>
-                </View>
-              )}
+                ) : (
+                  <View style={styles.checkCircle} />
+                )}
+              </TouchableOpacity>
 
               {/* Task-Inhalt */}
               <View style={styles.taskContent}>

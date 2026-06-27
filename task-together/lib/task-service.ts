@@ -94,6 +94,20 @@ export async function completeTask(
 }
 
 /**
+ * Setzt einen erledigten Task wieder auf offen.
+ * Löscht completedBy und completedAt.
+ */
+export async function reopenTask(taskId: string): Promise<void> {
+  const taskRef = doc(db, 'tasks', taskId);
+  await updateDoc(taskRef, {
+    done: false,
+    completedBy: null,
+    completedAt: null,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * Abonniert alle Tasks in Echtzeit (neueste zuerst).
  *
  * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
