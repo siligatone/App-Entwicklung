@@ -21,7 +21,11 @@ export default function RootLayout() {
           },
           headerShadowVisible: false,
         }}
-      />
+      >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+      </Stack>
     </>
   );
 }

@@ -16,9 +16,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedProfile, clearUserData, type CachedProfile } from '../lib/storage';
-import { deleteUserProfile } from '../lib/user-service';
-import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
+import { getCachedProfile, clearUserData, type CachedProfile } from '../../lib/storage';
+import { deleteUserProfile } from '../../lib/user-service';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -123,14 +123,6 @@ export default function ProfileScreen() {
         )}
       </TouchableOpacity>
 
-      {/* Zurück */}
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-        accessibilityLabel="Zurück zur Aufgabenliste"
-      >
-        <Text style={styles.backButtonText}>← Zurück</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -233,15 +225,5 @@ const styles = StyleSheet.create({
     color: Colors.textOnPrimary,
     fontSize: Typography.sizeMD,
     fontWeight: Typography.weightSemiBold,
-  },
-  backButton: {
-    padding: Spacing.md,
-    minHeight: MIN_TOUCH_TARGET,
-    justifyContent: 'center',
-  },
-  backButtonText: {
-    color: Colors.primary,
-    fontSize: Typography.sizeMD,
-    fontWeight: Typography.weightMedium,
   },
 });

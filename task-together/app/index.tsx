@@ -31,7 +31,7 @@ export default function Index() {
       // userId vorhanden — prüfe ob lokaler Cache existiert
       const cached = await getCachedProfile();
       if (cached) {
-        router.replace('/tasks');
+        router.replace('/(tabs)');
         return;
       }
 
@@ -45,7 +45,7 @@ export default function Index() {
             displayName: firestoreProfile.displayName,
             emoji: firestoreProfile.emoji,
           });
-          router.replace('/tasks');
+          router.replace('/(tabs)');
         } else {
           // userId existiert lokal, aber kein Firestore-Profil → Onboarding
           router.replace('/onboarding');

@@ -14,10 +14,9 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { getCachedProfile, type CachedProfile } from '../lib/storage';
-import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task } from '../lib/task-service';
-import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
+import { getCachedProfile, type CachedProfile } from '../../lib/storage';
+import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task } from '../../lib/task-service';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 /** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
 function toDate(timestamp: unknown): Date | null {
@@ -60,7 +59,6 @@ function sortTasks(tasks: Task[]): Task[] {
 }
 
 export default function TasksScreen() {
-  const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,23 +168,12 @@ export default function TasksScreen() {
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Aufgaben</Text>
           {profile && (
-            <TouchableOpacity
-              style={styles.userBadge}
-              onPress={() => router.push('/profile')}
-              accessibilityLabel="Profil anzeigen"
-            >
+            <View style={styles.userBadge}>
               <Text style={styles.userEmoji}>{profile.emoji}</Text>
               <Text style={styles.userName}>{profile.displayName}</Text>
-            </TouchableOpacity>
+            </View>
           )}
         </View>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push('/create')}
-          accessibilityLabel="Neue Aufgabe erstellen"
-        >
-          <Text style={styles.addButtonText}>+</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Ladezustand */}
@@ -349,22 +336,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizeSM,
     fontWeight: Typography.weightMedium,
     color: Colors.textSecondary,
-  },
-  addButton: {
-    width: MIN_TOUCH_TARGET,
-    height: MIN_TOUCH_TARGET,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Shadows.md,
-  },
-  addButtonText: {
-    color: Colors.textOnPrimary,
-    fontSize: 28,
-    fontWeight: Typography.weightRegular,
-    lineHeight: 32,
-    marginTop: -2,
   },
   // --- Zustände ---
   centerBox: {

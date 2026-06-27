@@ -52,7 +52,7 @@ export default function OnboardingScreen() {
 
       await cacheProfile({ userId, displayName: trimmedName, emoji: selectedEmoji });
 
-      router.replace('/tasks');
+      router.replace('/(tabs)');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
       setError(`Profil konnte nicht gespeichert werden: ${message}`);

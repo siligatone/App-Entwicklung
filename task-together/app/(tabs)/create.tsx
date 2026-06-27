@@ -16,9 +16,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedProfile, type CachedProfile } from '../lib/storage';
-import { createTask } from '../lib/task-service';
-import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
+import { getCachedProfile, type CachedProfile } from '../../lib/storage';
+import { createTask } from '../../lib/task-service';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -50,7 +50,10 @@ export default function CreateScreen() {
           emoji: profile.emoji,
         },
       );
-      router.back();
+      setTitle('');
+      setDescription('');
+      setSaving(false);
+      router.replace('/(tabs)');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
       setError(`Aufgabe konnte nicht erstellt werden: ${message}`);
@@ -108,7 +111,7 @@ export default function CreateScreen() {
         {profile && (
           <View style={styles.creatorInfo}>
             <Text style={styles.creatorText}>
-              Erstellt von {profile.emoji} {profile.displayName}
+              Erstellt von {profile.displayName} {profile.emoji}
             </Text>
           </View>
         )}
@@ -136,7 +139,7 @@ export default function CreateScreen() {
 
         <TouchableOpacity
           style={styles.cancelButton}
-          onPress={() => router.back()}
+          onPress={() => router.replace('/(tabs)')}
           accessibilityLabel="Abbrechen"
         >
           <Text style={styles.cancelButtonText}>Abbrechen</Text>
