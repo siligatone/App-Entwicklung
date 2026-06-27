@@ -14,6 +14,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../../lib/storage';
 import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -59,6 +60,7 @@ function sortTasks(tasks: Task[]): Task[] {
 }
 
 export default function TasksScreen() {
+  const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,8 +236,13 @@ export default function TasksScreen() {
                 )}
               </TouchableOpacity>
 
-              {/* Task-Inhalt */}
-              <View style={styles.taskContent}>
+              {/* Task-Inhalt — antippbar für Details */}
+              <TouchableOpacity
+                style={styles.taskContent}
+                onPress={() => router.push(`/task/${task.id}`)}
+                accessibilityLabel={`Details zu "${task.title}"`}
+                activeOpacity={0.7}
+              >
                 <Text
                   style={[styles.taskTitle, task.done && styles.taskTitleDone]}
                   numberOfLines={2}
@@ -244,12 +251,15 @@ export default function TasksScreen() {
                 </Text>
 
                 {task.description !== '' && (
-                  <Text
-                    style={[styles.taskDescription, task.done && styles.taskDescriptionDone]}
-                    numberOfLines={3}
-                  >
-                    {task.description}
-                  </Text>
+                  <>
+                    <Text
+                      style={[styles.taskDescription, task.done && styles.taskDescriptionDone]}
+                      numberOfLines={2}
+                    >
+                      {task.description}
+                    </Text>
+                    <Text style={styles.detailsHint}>Details ansehen</Text>
+                  </>
                 )}
 
                 {task.assignedTo && (
@@ -259,7 +269,7 @@ export default function TasksScreen() {
                     </Text>
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Footer */}
@@ -453,6 +463,12 @@ const styles = StyleSheet.create({
   },
   taskDescriptionDone: {
     textDecorationLine: 'line-through',
+  },
+  detailsHint: {
+    fontSize: Typography.sizeXS,
+    color: Colors.primary,
+    fontWeight: Typography.weightMedium,
+    marginTop: 2,
   },
   assignedBadge: {
     flexDirection: 'row',

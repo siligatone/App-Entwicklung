@@ -122,6 +122,47 @@ export async function deleteTask(taskId: string): Promise<void> {
 }
 
 /**
+ * Aktualisiert Titel und/oder Beschreibung eines Tasks.
+ */
+export async function updateTask(
+  taskId: string,
+  input: CreateTaskInput,
+): Promise<void> {
+  const taskRef = doc(db, 'tasks', taskId);
+  await updateDoc(taskRef, {
+    title: input.title,
+    description: input.description,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Abonniert einen einzelnen Task in Echtzeit.
+ * Gibt eine unsubscribe-Funktion zurück.
+ */
+export function subscribeToTask(
+  taskId: string,
+  onTask: (task: Task | null) => void,
+  onError: (error: string) => void,
+): Unsubscribe {
+  const taskRef = doc(db, 'tasks', taskId);
+
+  return onSnapshot(
+    taskRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onTask(null);
+        return;
+      }
+      onTask({ id: snapshot.id, ...snapshot.data() } as Task);
+    },
+    (error) => {
+      onError(error.message);
+    },
+  );
+}
+
+/**
  * Abonniert alle Tasks in Echtzeit (neueste zuerst).
  *
  * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
