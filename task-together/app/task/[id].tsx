@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { subscribeToTask, updateTask, type Task } from '../../lib/task-service';
+import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 /** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
@@ -61,6 +62,10 @@ export default function TaskDetailScreen() {
   const [editDescription, setEditDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -91,12 +96,16 @@ export default function TaskDetailScreen() {
     setEditTitle(task.title);
     setEditDescription(task.description);
     setSaveError(null);
+    setSuggestions([]);
+    setAddedSuggestions(new Set());
     setEditing(true);
   }
 
   function cancelEditing() {
     setEditing(false);
     setSaveError(null);
+    setSuggestions([]);
+    setAddedSuggestions(new Set());
   }
 
   async function handleSave() {
@@ -179,6 +188,59 @@ export default function TaskDetailScreen() {
             textAlignVertical="top"
           />
         </View>
+
+        {/* Assistent — Unteraufgaben vorschlagen */}
+        <TouchableOpacity
+          style={[styles.suggestButton, (editTitle.trim().length === 0 || suggestLoading) && styles.suggestButtonDisabled]}
+          onPress={async () => {
+            setSuggestLoading(true);
+            setSuggestions([]);
+            setAddedSuggestions(new Set());
+            const result = await suggestSubtasksAI(editTitle.trim(), editDescription.trim() || undefined);
+            setSuggestions(result.suggestions);
+            setSuggestSource(result.source);
+            setSuggestLoading(false);
+          }}
+          disabled={editTitle.trim().length === 0 || suggestLoading}
+        >
+          {suggestLoading ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Text style={[styles.suggestButtonText, editTitle.trim().length === 0 && styles.suggestButtonTextDisabled]}>
+              💡 KI-Unteraufgaben vorschlagen
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {suggestions.length > 0 && (
+          <View style={styles.suggestionsCard}>
+            <Text style={styles.suggestionsLabel}>
+              {suggestSource === 'ai' ? 'KI-Vorschläge' : 'Lokale Vorschläge'} — antippen zum Hinzufügen:
+            </Text>
+            {suggestions.map((s) => {
+              const isAdded = addedSuggestions.has(s);
+              return (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.suggestionChip, isAdded && styles.suggestionChipAdded]}
+                  onPress={() => {
+                    if (isAdded) return;
+                    setEditDescription((prev) => {
+                      const prefix = prev.trim().length > 0 ? `${prev.trim()}\n` : '';
+                      return `${prefix}• ${s}`;
+                    });
+                    setAddedSuggestions((prev) => new Set(prev).add(s));
+                  }}
+                  disabled={isAdded}
+                >
+                  <Text style={[styles.suggestionText, isAdded && styles.suggestionTextAdded]}>
+                    {isAdded ? '✓ ' : '+ '}{s}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {saveError && (
           <View style={styles.errorBox}>
@@ -414,6 +476,61 @@ const styles = StyleSheet.create({
     color: Colors.textOnPrimary,
     fontSize: Typography.sizeLG,
     fontWeight: Typography.weightSemiBold,
+  },
+  // --- Assistent ---
+  suggestButton: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    borderStyle: 'dashed',
+  },
+  suggestButtonDisabled: {
+    opacity: 0.4,
+    borderColor: Colors.separatorOpaque,
+  },
+  suggestButtonText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.primary,
+  },
+  suggestButtonTextDisabled: {
+    color: Colors.textTertiary,
+  },
+  suggestionsCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Shadows.sm,
+  },
+  suggestionsLabel: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.sm,
+  },
+  suggestionChip: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.backgroundPrimary,
+    marginBottom: Spacing.xs,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  suggestionChipAdded: {
+    backgroundColor: Colors.success + '15',
+  },
+  suggestionText: {
+    fontSize: Typography.sizeSM,
+    color: Colors.primary,
+    fontWeight: Typography.weightMedium,
+  },
+  suggestionTextAdded: {
+    color: Colors.success,
   },
   // --- Edit Mode ---
   sectionTitle: {

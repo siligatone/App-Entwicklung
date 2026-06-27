@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../../lib/storage';
 import { createTask, type UserSnapshot } from '../../lib/task-service';
 import { subscribeToUsers, type UserProfile } from '../../lib/user-service';
+import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 export default function CreateScreen() {
@@ -30,6 +31,10 @@ export default function CreateScreen() {
   const [error, setError] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [assignedTo, setAssignedTo] = useState<UserSnapshot | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
 
   useEffect(() => {
     getCachedProfile().then(setProfile);
@@ -66,6 +71,9 @@ export default function CreateScreen() {
       setTitle('');
       setDescription('');
       setAssignedTo(null);
+      setSuggestions([]);
+      setAddedSuggestions(new Set());
+      setSuggestSource(null);
       setSaving(false);
       router.replace('/(tabs)');
     } catch (err) {
@@ -120,6 +128,59 @@ export default function CreateScreen() {
             textAlignVertical="top"
           />
         </View>
+
+        {/* Assistent — Unteraufgaben vorschlagen */}
+        <TouchableOpacity
+          style={[styles.suggestButton, (trimmedTitle.length === 0 || suggestLoading) && styles.suggestButtonDisabled]}
+          onPress={async () => {
+            setSuggestLoading(true);
+            setSuggestions([]);
+            setAddedSuggestions(new Set());
+            const result = await suggestSubtasksAI(trimmedTitle, description.trim() || undefined);
+            setSuggestions(result.suggestions);
+            setSuggestSource(result.source);
+            setSuggestLoading(false);
+          }}
+          disabled={trimmedTitle.length === 0 || suggestLoading}
+        >
+          {suggestLoading ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Text style={[styles.suggestButtonText, trimmedTitle.length === 0 && styles.suggestButtonTextDisabled]}>
+              💡 KI-Unteraufgaben vorschlagen
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {suggestions.length > 0 && (
+          <View style={styles.suggestionsCard}>
+            <Text style={styles.suggestionsLabel}>
+              {suggestSource === 'ai' ? 'KI-Vorschläge' : 'Lokale Vorschläge'} — antippen zum Hinzufügen:
+            </Text>
+            {suggestions.map((s) => {
+              const isAdded = addedSuggestions.has(s);
+              return (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.suggestionChip, isAdded && styles.suggestionChipAdded]}
+                  onPress={() => {
+                    if (isAdded) return;
+                    setDescription((prev) => {
+                      const prefix = prev.trim().length > 0 ? `${prev.trim()}\n` : '';
+                      return `${prefix}• ${s}`;
+                    });
+                    setAddedSuggestions((prev) => new Set(prev).add(s));
+                  }}
+                  disabled={isAdded}
+                >
+                  <Text style={[styles.suggestionText, isAdded && styles.suggestionTextAdded]}>
+                    {isAdded ? '✓ ' : '+ '}{s}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {/* Zuweisen an (optional) */}
         <View style={styles.card}>
@@ -253,6 +314,60 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     paddingTop: Spacing.md,
+  },
+  suggestButton: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    borderStyle: 'dashed',
+  },
+  suggestButtonDisabled: {
+    opacity: 0.4,
+    borderColor: Colors.separatorOpaque,
+  },
+  suggestButtonText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.primary,
+  },
+  suggestButtonTextDisabled: {
+    color: Colors.textTertiary,
+  },
+  suggestionsCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Shadows.sm,
+  },
+  suggestionsLabel: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.sm,
+  },
+  suggestionChip: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.backgroundPrimary,
+    marginBottom: Spacing.xs,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  suggestionChipAdded: {
+    backgroundColor: Colors.success + '15',
+  },
+  suggestionText: {
+    fontSize: Typography.sizeSM,
+    color: Colors.primary,
+    fontWeight: Typography.weightMedium,
+  },
+  suggestionTextAdded: {
+    color: Colors.success,
   },
   noUsersHint: {
     fontSize: Typography.sizeSM,
