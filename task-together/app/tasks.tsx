@@ -1,9 +1,9 @@
 /**
  * Aufgabenliste — Echtzeit-Sync aus Firestore.
- * Zeigt alle Tasks, neueste zuerst. Offene Tasks können abgehakt werden.
+ * Offene Tasks oben (neueste zuerst), erledigte unten.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,46 @@ import { getCachedProfile, type CachedProfile } from '../lib/storage';
 import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task } from '../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
 
+/** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
+function toDate(timestamp: unknown): Date | null {
+  if (timestamp == null) return null;
+  if (typeof (timestamp as { toDate?: unknown }).toDate === 'function') {
+    return (timestamp as { toDate: () => Date }).toDate();
+  }
+  if (timestamp instanceof Date) return timestamp;
+  return null;
+}
+
+/** Deutsches Zeitformat: "Heute, 14:30" / "Gestern, 09:15" / "25.06., 10:15" */
+function formatTimestamp(timestamp: unknown): string {
+  const date = toDate(timestamp);
+  if (!date) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const taskDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const time = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+  if (taskDay.getTime() === today.getTime()) return `Heute, ${time}`;
+  if (taskDay.getTime() === yesterday.getTime()) return `Gestern, ${time}`;
+
+  const day = date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  return `${day}, ${time}`;
+}
+
+/** Sortiert: offene Tasks zuerst, dann erledigte. Innerhalb jeder Gruppe neueste zuerst. */
+function sortTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+
+    const dateA = toDate(a.createdAt)?.getTime() ?? 0;
+    const dateB = toDate(b.createdAt)?.getTime() ?? 0;
+    return dateB - dateA;
+  });
+}
+
 export default function TasksScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
@@ -27,6 +67,8 @@ export default function TasksScreen() {
   const [error, setError] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+
+  const sortedTasks = useMemo(() => sortTasks(tasks), [tasks]);
 
   // Profil laden
   useEffect(() => {
@@ -163,7 +205,7 @@ export default function TasksScreen() {
       )}
 
       {/* Leerer Zustand */}
-      {!loading && !error && tasks.length === 0 && (
+      {!loading && !error && sortedTasks.length === 0 && (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyEmoji}>📋</Text>
           <Text style={styles.emptyTitle}>Noch keine Aufgaben</Text>
@@ -174,7 +216,7 @@ export default function TasksScreen() {
       )}
 
       {/* Task-Liste */}
-      {!loading && tasks.map((task) => {
+      {!loading && sortedTasks.map((task) => {
         const isToggling = togglingIds.has(task.id);
 
         return (
@@ -229,11 +271,16 @@ export default function TasksScreen() {
             <View style={styles.taskFooter}>
               <View style={styles.taskFooterLeft}>
                 <Text style={styles.taskCreator}>
-                  {task.createdBy.emoji} {task.createdBy.displayName}
+                  Erstellt von {task.createdBy.displayName} {task.createdBy.emoji}
                 </Text>
+                {formatTimestamp(task.createdAt) !== '' && (
+                  <Text style={styles.taskTimestamp}>
+                    {formatTimestamp(task.createdAt)}
+                  </Text>
+                )}
                 {task.done && task.completedBy && (
                   <Text style={styles.taskCompletedBy}>
-                    Erledigt von {task.completedBy.emoji} {task.completedBy.displayName}
+                    Erledigt von {task.completedBy.displayName} {task.completedBy.emoji}
                   </Text>
                 )}
               </View>
@@ -445,6 +492,11 @@ const styles = StyleSheet.create({
   taskCreator: {
     fontSize: Typography.sizeXS,
     color: Colors.textTertiary,
+  },
+  taskTimestamp: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    marginTop: 2,
   },
   taskCompletedBy: {
     fontSize: Typography.sizeXS,
