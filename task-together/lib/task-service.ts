@@ -10,6 +10,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   orderBy,
   onSnapshot,
@@ -105,6 +106,15 @@ export async function reopenTask(taskId: string): Promise<void> {
     completedAt: null,
     updatedAt: serverTimestamp(),
   });
+}
+
+/**
+ * Löscht ein Task-Dokument aus Firestore.
+ * Löscht ausschließlich tasks/{taskId} — keine anderen Collections.
+ */
+export async function deleteTask(taskId: string): Promise<void> {
+  const taskRef = doc(db, 'tasks', taskId);
+  await deleteDoc(taskRef);
 }
 
 /**

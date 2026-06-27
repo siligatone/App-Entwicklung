@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../lib/storage';
-import { subscribeToTasks, completeTask, reopenTask, type Task } from '../lib/task-service';
+import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task } from '../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
 
 export default function TasksScreen() {
@@ -26,6 +26,7 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
   // Profil laden
   useEffect(() => {
@@ -78,6 +79,42 @@ export default function TasksScreen() {
         next.delete(task.id);
         return next;
       });
+    }
+  }
+
+  function handleDelete(task: Task) {
+    const doDelete = async () => {
+      setDeletingIds((prev) => new Set(prev).add(task.id));
+      try {
+        await deleteTask(task.id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+        if (Platform.OS === 'web') {
+          alert(`Aufgabe konnte nicht gelöscht werden: ${message}`);
+        } else {
+          Alert.alert('Fehler', `Aufgabe konnte nicht gelöscht werden: ${message}`);
+        }
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(task.id);
+          return next;
+        });
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (confirm(`"${task.title}" löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Aufgabe löschen?',
+        'Diese Aktion kann nicht rückgängig gemacht werden.',
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          { text: 'Löschen', style: 'destructive', onPress: doDelete },
+        ],
+      );
     }
   }
 
@@ -190,14 +227,28 @@ export default function TasksScreen() {
 
             {/* Footer */}
             <View style={styles.taskFooter}>
-              <Text style={styles.taskCreator}>
-                {task.createdBy.emoji} {task.createdBy.displayName}
-              </Text>
-              {task.done && task.completedBy && (
-                <Text style={styles.taskCompletedBy}>
-                  Erledigt von {task.completedBy.emoji} {task.completedBy.displayName}
+              <View style={styles.taskFooterLeft}>
+                <Text style={styles.taskCreator}>
+                  {task.createdBy.emoji} {task.createdBy.displayName}
                 </Text>
-              )}
+                {task.done && task.completedBy && (
+                  <Text style={styles.taskCompletedBy}>
+                    Erledigt von {task.completedBy.emoji} {task.completedBy.displayName}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDelete(task)}
+                disabled={deletingIds.has(task.id)}
+                accessibilityLabel={`Aufgabe "${task.title}" löschen`}
+              >
+                {deletingIds.has(task.id) ? (
+                  <ActivityIndicator size="small" color={Colors.danger} />
+                ) : (
+                  <Text style={styles.deleteButtonText}>Löschen</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         );
@@ -387,6 +438,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.separatorOpaque,
   },
+  taskFooterLeft: {
+    flex: 1,
+    marginRight: Spacing.sm,
+  },
   taskCreator: {
     fontSize: Typography.sizeXS,
     color: Colors.textTertiary,
@@ -394,6 +449,19 @@ const styles = StyleSheet.create({
   taskCompletedBy: {
     fontSize: Typography.sizeXS,
     color: Colors.success,
+    fontWeight: Typography.weightMedium,
+    marginTop: 2,
+  },
+  deleteButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    minHeight: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    fontSize: Typography.sizeXS,
+    color: Colors.danger,
     fontWeight: Typography.weightMedium,
   },
 });
