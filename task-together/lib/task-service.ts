@@ -7,7 +7,9 @@
 
 import {
   collection,
+  doc,
   addDoc,
+  updateDoc,
   query,
   orderBy,
   onSnapshot,
@@ -68,6 +70,27 @@ export async function createTask(
     completedAt: null,
   });
   return docRef.id;
+}
+
+/**
+ * Markiert einen Task als erledigt.
+ * Setzt done=true, completedBy und completedAt.
+ */
+export async function completeTask(
+  taskId: string,
+  currentUser: UserSnapshot,
+): Promise<void> {
+  const taskRef = doc(db, 'tasks', taskId);
+  await updateDoc(taskRef, {
+    done: true,
+    completedBy: {
+      userId: currentUser.userId,
+      displayName: currentUser.displayName,
+      emoji: currentUser.emoji,
+    },
+    completedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /**

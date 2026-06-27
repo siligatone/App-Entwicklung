@@ -1,6 +1,6 @@
 /**
  * Aufgabenliste — Echtzeit-Sync aus Firestore.
- * Zeigt alle Tasks, neueste zuerst. Noch kein Abhaken/Löschen.
+ * Zeigt alle Tasks, neueste zuerst. Offene Tasks können abgehakt werden.
  */
 
 import { useEffect, useState } from 'react';
@@ -11,10 +11,12 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../lib/storage';
-import { subscribeToTasks, type Task } from '../lib/task-service';
+import { subscribeToTasks, completeTask, type Task } from '../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
 
 export default function TasksScreen() {
@@ -23,6 +25,7 @@ export default function TasksScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
 
   // Profil laden
   useEffect(() => {
@@ -45,6 +48,33 @@ export default function TasksScreen() {
 
     return () => unsubscribe();
   }, []);
+
+  async function handleComplete(taskId: string) {
+    if (!profile || completingIds.has(taskId)) return;
+
+    setCompletingIds((prev) => new Set(prev).add(taskId));
+
+    try {
+      await completeTask(taskId, {
+        userId: profile.userId,
+        displayName: profile.displayName,
+        emoji: profile.emoji,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      if (Platform.OS === 'web') {
+        alert(`Fehler: ${message}`);
+      } else {
+        Alert.alert('Fehler', `Aufgabe konnte nicht abgehakt werden: ${message}`);
+      }
+    } finally {
+      setCompletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+    }
+  }
 
   return (
     <ScrollView
@@ -102,28 +132,71 @@ export default function TasksScreen() {
       )}
 
       {/* Task-Liste */}
-      {!loading && tasks.map((task) => (
-        <View key={task.id} style={styles.taskCard}>
-          <View style={styles.taskHeader}>
-            <View style={styles.taskStatusDot} />
-            <Text style={styles.taskTitle} numberOfLines={2}>
-              {task.title}
-            </Text>
-          </View>
+      {!loading && tasks.map((task) => {
+        const isCompleting = completingIds.has(task.id);
 
-          {task.description !== '' && (
-            <Text style={styles.taskDescription} numberOfLines={3}>
-              {task.description}
-            </Text>
-          )}
+        return (
+          <View
+            key={task.id}
+            style={[styles.taskCard, task.done && styles.taskCardDone]}
+          >
+            <View style={styles.taskRow}>
+              {/* Check-Button */}
+              {!task.done ? (
+                <TouchableOpacity
+                  style={styles.checkButton}
+                  onPress={() => handleComplete(task.id)}
+                  disabled={isCompleting}
+                  accessibilityLabel={`Aufgabe "${task.title}" abhaken`}
+                >
+                  {isCompleting ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <View style={styles.checkCircle} />
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.checkButton}>
+                  <View style={styles.checkCircleDone}>
+                    <Text style={styles.checkMark}>✓</Text>
+                  </View>
+                </View>
+              )}
 
-          <View style={styles.taskFooter}>
-            <Text style={styles.taskCreator}>
-              {task.createdBy.emoji} {task.createdBy.displayName}
-            </Text>
+              {/* Task-Inhalt */}
+              <View style={styles.taskContent}>
+                <Text
+                  style={[styles.taskTitle, task.done && styles.taskTitleDone]}
+                  numberOfLines={2}
+                >
+                  {task.title}
+                </Text>
+
+                {task.description !== '' && (
+                  <Text
+                    style={[styles.taskDescription, task.done && styles.taskDescriptionDone]}
+                    numberOfLines={3}
+                  >
+                    {task.description}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* Footer */}
+            <View style={styles.taskFooter}>
+              <Text style={styles.taskCreator}>
+                {task.createdBy.emoji} {task.createdBy.displayName}
+              </Text>
+              {task.done && task.completedBy && (
+                <Text style={styles.taskCompletedBy}>
+                  Erledigt von {task.completedBy.emoji} {task.completedBy.displayName}
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 }
@@ -240,35 +313,70 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     ...Shadows.sm,
   },
-  taskHeader: {
+  taskCardDone: {
+    opacity: 0.6,
+  },
+  taskRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
-  taskStatusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.primary,
-    marginTop: 6,
+  // --- Check-Button ---
+  checkButton: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: Spacing.sm,
   },
-  taskTitle: {
+  checkCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: Colors.separator,
+  },
+  checkCircleDone: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkMark: {
+    color: Colors.textOnPrimary,
+    fontSize: 14,
+    fontWeight: Typography.weightBold,
+  },
+  // --- Task-Inhalt ---
+  taskContent: {
     flex: 1,
+    paddingTop: Spacing.sm,
+  },
+  taskTitle: {
     fontSize: Typography.sizeMD,
     fontWeight: Typography.weightSemiBold,
     color: Colors.textPrimary,
     lineHeight: 22,
+  },
+  taskTitleDone: {
+    textDecorationLine: 'line-through',
+    color: Colors.textTertiary,
   },
   taskDescription: {
     fontSize: Typography.sizeSM,
     color: Colors.textTertiary,
     lineHeight: 20,
     marginTop: Spacing.xs,
-    marginLeft: 10 + Spacing.sm, // aligned with title (dot width + gap)
   },
+  taskDescriptionDone: {
+    textDecorationLine: 'line-through',
+  },
+  // --- Footer ---
   taskFooter: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: Spacing.sm,
     paddingTop: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -277,5 +385,10 @@ const styles = StyleSheet.create({
   taskCreator: {
     fontSize: Typography.sizeXS,
     color: Colors.textTertiary,
+  },
+  taskCompletedBy: {
+    fontSize: Typography.sizeXS,
+    color: Colors.success,
+    fontWeight: Typography.weightMedium,
   },
 });
