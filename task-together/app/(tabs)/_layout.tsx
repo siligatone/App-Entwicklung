@@ -1,6 +1,6 @@
 /**
- * Tab-Layout — Bottom Navigation mit vier Tabs:
- * Aufgaben (Home), Übersicht, Neue Aufgabe, Profil.
+ * Tab-Layout — Bottom Navigation mit fünf Tabs:
+ * Aufgaben (Home), Übersicht, Kalender, Neue Aufgabe, Profil.
  */
 
 import { Tabs } from 'expo-router';
@@ -49,6 +49,16 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarIcon: ({ color }) => (
             <Text style={{ fontSize: 20, color }}>📊</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Kalender',
+          headerShown: false,
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>📅</Text>
           ),
         }}
       />
