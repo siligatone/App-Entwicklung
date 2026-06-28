@@ -13,6 +13,8 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  query,
+  where,
   onSnapshot,
   serverTimestamp,
   type Unsubscribe,
@@ -68,17 +70,22 @@ export async function deleteUserProfile(userId: string): Promise<void> {
 }
 
 /**
- * Abonniert alle Demo-Profile in Echtzeit.
+ * Abonniert Demo-Profile in Echtzeit.
+ * Wenn groupId angegeben wird, werden nur Mitglieder dieser Gruppe geladen.
  * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
  */
 export function subscribeToUsers(
   onUsers: (users: UserProfile[]) => void,
   onError: (error: string) => void,
+  groupId?: string,
 ): Unsubscribe {
   const usersCollection = collection(db, 'users');
+  const q = groupId
+    ? query(usersCollection, where('groupId', '==', groupId))
+    : usersCollection;
 
   return onSnapshot(
-    usersCollection,
+    q,
     (snapshot) => {
       const users: UserProfile[] = snapshot.docs.map((d) => ({
         ...d.data(),

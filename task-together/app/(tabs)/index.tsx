@@ -15,7 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedProfile, type CachedProfile } from '../../lib/storage';
+import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task, type Priority } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
@@ -89,6 +89,7 @@ function formatDeadline(timestamp: unknown): { text: string; overdue: boolean } 
 export default function TasksScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
+  const [group, setGroup] = useState<CachedGroup | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,13 +98,16 @@ export default function TasksScreen() {
 
   const sortedTasks = useMemo(() => sortTasks(tasks), [tasks]);
 
-  // Profil laden
+  // Profil und Gruppe laden
   useEffect(() => {
     getCachedProfile().then(setProfile);
+    getCachedGroup().then(setGroup);
   }, []);
 
-  // Echtzeit-Listener für Tasks
+  // Echtzeit-Listener für Tasks (gefiltert nach aktiver Gruppe)
   useEffect(() => {
+    if (!group) return;
+
     const unsubscribe = subscribeToTasks(
       (newTasks) => {
         setTasks(newTasks);
@@ -114,10 +118,11 @@ export default function TasksScreen() {
         setError(errorMsg);
         setLoading(false);
       },
+      group.groupId,
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [group]);
 
   async function handleToggle(task: Task) {
     if (!profile || togglingIds.has(task.id)) return;

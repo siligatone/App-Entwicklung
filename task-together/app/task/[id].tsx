@@ -16,6 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { getCachedGroup, type CachedGroup } from '../../lib/storage';
 import { subscribeToTask, updateTask, toggleSubtask, generateId, type Task, type Priority, type Subtask } from '../../lib/task-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -79,6 +80,7 @@ function formatDeadlineDetail(timestamp: unknown): { text: string; overdue: bool
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const [group, setGroup] = useState<CachedGroup | null>(null);
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,13 +103,21 @@ export default function TaskDetailScreen() {
   const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    getCachedGroup().then(setGroup);
+  }, []);
+
+  useEffect(() => {
+    if (!id || !group) return;
 
     const unsubscribe = subscribeToTask(
       id,
       (t) => {
         if (t === null) {
           setError('Aufgabe nicht gefunden oder gelöscht.');
+          setTask(null);
+        } else if (t.groupId != null && t.groupId !== group.groupId) {
+          // Task gehört zu einer anderen Gruppe
+          setError('Diese Aufgabe gehört nicht zu deiner Gruppe.');
           setTask(null);
         } else {
           setTask(t);
@@ -122,7 +132,7 @@ export default function TaskDetailScreen() {
     );
 
     return () => unsubscribe();
-  }, [id]);
+  }, [id, group]);
 
   function startEditing() {
     if (!task) return;
@@ -166,6 +176,7 @@ export default function TaskDetailScreen() {
       await updateTask(task.id, {
         title: editTitle.trim(),
         description: editDescription.trim(),
+        groupId: task.groupId ?? group?.groupId ?? '',
         priority: editPriority,
         labels: [...editLabels],
         effortEstimate: editEffort,

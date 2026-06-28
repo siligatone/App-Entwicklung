@@ -12,6 +12,7 @@ import {
   updateDoc,
   deleteDoc,
   query,
+  where,
   orderBy,
   onSnapshot,
   serverTimestamp,
@@ -48,6 +49,7 @@ export interface Task {
   title: string;
   description: string;
   done: boolean;
+  groupId: string | null;
   createdBy: UserSnapshot;
   completedBy: UserSnapshot | null;
   assignedTo: UserSnapshot | null;
@@ -65,6 +67,7 @@ export interface Task {
 export interface CreateTaskInput {
   title: string;
   description: string;
+  groupId: string;
   priority?: Priority | null;
   labels?: string[];
   effortEstimate?: number | null;
@@ -87,6 +90,7 @@ export async function createTask(
     title: input.title,
     description: input.description,
     done: false,
+    groupId: input.groupId,
     createdBy: {
       userId: currentUser.userId,
       displayName: currentUser.displayName,
@@ -221,27 +225,54 @@ export function subscribeToTask(
 }
 
 /**
- * Abonniert alle Tasks in Echtzeit (neueste zuerst).
+ * Abonniert Tasks in Echtzeit.
+ *
+ * Wenn groupId angegeben wird, werden nur Tasks dieser Gruppe geladen.
+ * Sortierung erfolgt clientseitig (neueste zuerst), um einen Firestore
+ * Composite Index auf (groupId, createdAt) zu vermeiden.
  *
  * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
  */
 export function subscribeToTasks(
   onTasks: (tasks: Task[]) => void,
   onError: (error: string) => void,
+  groupId?: string,
 ): Unsubscribe {
-  const q = query(tasksCollection, orderBy('createdAt', 'desc'));
+  const q = groupId
+    ? query(tasksCollection, where('groupId', '==', groupId))
+    : query(tasksCollection, orderBy('createdAt', 'desc'));
 
   return onSnapshot(
     q,
     (snapshot) => {
-      const tasks: Task[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      const tasks: Task[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
       })) as Task[];
+
+      // Clientseitige Sortierung wenn groupId-Filter aktiv (kein orderBy im Query)
+      if (groupId) {
+        tasks.sort((a, b) => {
+          const dateA = toTimestamp(a.createdAt);
+          const dateB = toTimestamp(b.createdAt);
+          return dateB - dateA;
+        });
+      }
+
       onTasks(tasks);
     },
     (error) => {
       onError(error.message);
     },
   );
+}
+
+/** Hilfsfunktion: Firestore Timestamp zu Millisekunden */
+function toTimestamp(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof (value as { toMillis?: unknown }).toMillis === 'function') {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  if (value instanceof Date) return value.getTime();
+  return 0;
 }

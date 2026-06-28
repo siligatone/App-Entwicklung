@@ -16,7 +16,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedProfile, type CachedProfile } from '../../lib/storage';
+import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { createTask, generateId, type UserSnapshot, type Priority, type Subtask } from '../../lib/task-service';
 import { subscribeToUsers, type UserProfile } from '../../lib/user-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
@@ -25,6 +25,7 @@ import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } 
 export default function CreateScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
+  const [group, setGroup] = useState<CachedGroup | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
@@ -43,22 +44,25 @@ export default function CreateScreen() {
 
   useEffect(() => {
     getCachedProfile().then(setProfile);
+    getCachedGroup().then(setGroup);
   }, []);
 
-  // Echtzeit-Listener für alle Demo-User
+  // Echtzeit-Listener für Gruppenmitglieder
   useEffect(() => {
+    if (!group) return;
     const unsubscribe = subscribeToUsers(
       (users) => setAllUsers(users),
       () => {}, // Fehler still ignorieren — Picker ist optional
+      group.groupId,
     );
     return () => unsubscribe();
-  }, []);
+  }, [group]);
 
   const trimmedTitle = title.trim();
-  const canSave = trimmedTitle.length > 0 && !saving && profile !== null;
+  const canSave = trimmedTitle.length > 0 && !saving && profile !== null && group !== null;
 
   async function handleCreate() {
-    if (!canSave || !profile) return;
+    if (!canSave || !profile || !group) return;
 
     setSaving(true);
     setError(null);
@@ -71,6 +75,7 @@ export default function CreateScreen() {
         {
           title: trimmedTitle,
           description: description.trim(),
+          groupId: group.groupId,
           priority,
           labels: [...labels],
           effortEstimate,

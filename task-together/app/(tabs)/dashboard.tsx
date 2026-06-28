@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { getCachedGroup, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, type Task } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
@@ -50,11 +51,18 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const [group, setGroup] = useState<CachedGroup | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    getCachedGroup().then(setGroup);
+  }, []);
+
+  useEffect(() => {
+    if (!group) return;
+
     const unsubscribe = subscribeToTasks(
       (newTasks) => {
         setTasks(newTasks);
@@ -65,9 +73,10 @@ export default function DashboardScreen() {
         setError(errorMsg);
         setLoading(false);
       },
+      group.groupId,
     );
     return () => unsubscribe();
-  }, []);
+  }, [group]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
