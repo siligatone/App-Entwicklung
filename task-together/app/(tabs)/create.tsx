@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../../lib/storage';
-import { createTask, type UserSnapshot, type Priority } from '../../lib/task-service';
+import { createTask, generateId, type UserSnapshot, type Priority, type Subtask } from '../../lib/task-service';
 import { subscribeToUsers, type UserProfile } from '../../lib/user-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -35,6 +35,7 @@ export default function CreateScreen() {
   const [labels, setLabels] = useState<Set<string>>(new Set());
   const [effortEstimate, setEffortEstimate] = useState<number | null>(null);
   const [deadlineDays, setDeadlineDays] = useState<number | null>(null);
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -74,6 +75,7 @@ export default function CreateScreen() {
           labels: [...labels],
           effortEstimate,
           deadline: deadlineDate,
+          subtasks,
         },
         {
           userId: profile.userId,
@@ -89,6 +91,7 @@ export default function CreateScreen() {
       setLabels(new Set());
       setEffortEstimate(null);
       setDeadlineDays(null);
+      setSubtasks([]);
       setSuggestions([]);
       setAddedSuggestions(new Set());
       setSuggestSource(null);
@@ -183,10 +186,7 @@ export default function CreateScreen() {
                   style={[styles.suggestionChip, isAdded && styles.suggestionChipAdded]}
                   onPress={() => {
                     if (isAdded) return;
-                    setDescription((prev) => {
-                      const prefix = prev.trim().length > 0 ? `${prev.trim()}\n` : '';
-                      return `${prefix}• ${s}`;
-                    });
+                    setSubtasks((prev) => [...prev, { id: generateId(), title: s, done: false }]);
                     setAddedSuggestions((prev) => new Set(prev).add(s));
                   }}
                   disabled={isAdded}
@@ -197,6 +197,32 @@ export default function CreateScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        )}
+
+        {/* Subtask-Vorschau */}
+        {subtasks.length > 0 && (
+          <View style={styles.subtasksCard}>
+            <Text style={styles.label}>Unterpunkte ({subtasks.length})</Text>
+            {subtasks.map((st) => (
+              <View key={st.id} style={styles.subtaskRow}>
+                <View style={styles.subtaskCheckEmpty} />
+                <Text style={styles.subtaskTitle} numberOfLines={2}>{st.title}</Text>
+                <TouchableOpacity
+                  style={styles.subtaskRemove}
+                  onPress={() => {
+                    setSubtasks((prev) => prev.filter((s) => s.id !== st.id));
+                    setAddedSuggestions((prev) => {
+                      const next = new Set(prev);
+                      next.delete(st.title);
+                      return next;
+                    });
+                  }}
+                >
+                  <Text style={styles.subtaskRemoveText}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 
@@ -483,6 +509,45 @@ const styles = StyleSheet.create({
   },
   suggestionTextAdded: {
     color: Colors.success,
+  },
+  subtasksCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Shadows.sm,
+  },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separatorOpaque,
+  },
+  subtaskCheckEmpty: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.separator,
+    marginRight: Spacing.sm,
+  },
+  subtaskTitle: {
+    flex: 1,
+    fontSize: Typography.sizeSM,
+    color: Colors.textPrimary,
+  },
+  subtaskRemove: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: Spacing.xs,
+  },
+  subtaskRemoveText: {
+    fontSize: Typography.sizeLG,
+    color: Colors.textTertiary,
+    fontWeight: Typography.weightMedium,
   },
   chipRow: {
     flexDirection: 'row',

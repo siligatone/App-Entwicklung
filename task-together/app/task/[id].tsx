@@ -16,7 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { subscribeToTask, updateTask, type Task, type Priority } from '../../lib/task-service';
+import { subscribeToTask, updateTask, toggleSubtask, generateId, type Task, type Priority, type Subtask } from '../../lib/task-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
@@ -91,7 +91,9 @@ export default function TaskDetailScreen() {
   const [editLabels, setEditLabels] = useState<Set<string>>(new Set());
   const [editEffort, setEditEffort] = useState<number | null>(null);
   const [editDeadlineDays, setEditDeadlineDays] = useState<number | null>(null);
+  const [editSubtasks, setEditSubtasks] = useState<Subtask[]>([]);
   const [saving, setSaving] = useState(false);
+  const [togglingSubtaskIds, setTogglingSubtaskIds] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
@@ -130,6 +132,7 @@ export default function TaskDetailScreen() {
     setEditLabels(new Set(task.labels ?? []));
     setEditEffort(task.effortEstimate ?? null);
     setEditDeadlineDays(null); // Deadline wird per Chip neu gesetzt
+    setEditSubtasks(task.subtasks ?? []);
     setSaveError(null);
     setSuggestions([]);
     setAddedSuggestions(new Set());
@@ -167,6 +170,7 @@ export default function TaskDetailScreen() {
         labels: [...editLabels],
         effortEstimate: editEffort,
         deadline: deadlineDate,
+        subtasks: editSubtasks,
       });
       setEditing(false);
     } catch (err) {
@@ -274,10 +278,7 @@ export default function TaskDetailScreen() {
                   style={[styles.suggestionChip, isAdded && styles.suggestionChipAdded]}
                   onPress={() => {
                     if (isAdded) return;
-                    setEditDescription((prev) => {
-                      const prefix = prev.trim().length > 0 ? `${prev.trim()}\n` : '';
-                      return `${prefix}• ${s}`;
-                    });
+                    setEditSubtasks((prev) => [...prev, { id: generateId(), title: s, done: false }]);
                     setAddedSuggestions((prev) => new Set(prev).add(s));
                   }}
                   disabled={isAdded}
@@ -288,6 +289,38 @@ export default function TaskDetailScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        )}
+
+        {/* Unterpunkte im Edit-Modus */}
+        {editSubtasks.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.fieldLabel}>Unterpunkte ({editSubtasks.length})</Text>
+            {editSubtasks.map((st) => (
+              <View key={st.id} style={styles.editSubtaskRow}>
+                <TouchableOpacity
+                  style={styles.editSubtaskCheck}
+                  onPress={() => setEditSubtasks((prev) =>
+                    prev.map((s) => s.id === st.id ? { ...s, done: !s.done } : s),
+                  )}
+                >
+                  {st.done ? (
+                    <View style={styles.subtaskCheckDone}><Text style={styles.subtaskCheckMark}>✓</Text></View>
+                  ) : (
+                    <View style={styles.subtaskCheckEmpty} />
+                  )}
+                </TouchableOpacity>
+                <Text style={[styles.editSubtaskTitle, st.done && styles.editSubtaskTitleDone]} numberOfLines={2}>
+                  {st.title}
+                </Text>
+                <TouchableOpacity
+                  style={styles.editSubtaskRemove}
+                  onPress={() => setEditSubtasks((prev) => prev.filter((s) => s.id !== st.id))}
+                >
+                  <Text style={styles.editSubtaskRemoveText}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 
@@ -435,6 +468,50 @@ export default function TaskDetailScreen() {
       {/* Beschreibung */}
       {task.description !== '' && (
         <Text style={styles.detailDescription}>{task.description}</Text>
+      )}
+
+      {/* Subtasks */}
+      {(task.subtasks ?? []).length > 0 && (
+        <View style={styles.subtasksDetailCard}>
+          <View style={styles.subtasksDetailHeader}>
+            <Text style={styles.fieldLabel}>Unterpunkte</Text>
+            <Text style={styles.subtasksProgress}>
+              {(task.subtasks ?? []).filter((s) => s.done).length}/{(task.subtasks ?? []).length} erledigt
+            </Text>
+          </View>
+          {(task.subtasks ?? []).map((st) => (
+            <TouchableOpacity
+              key={st.id}
+              style={styles.subtaskDetailRow}
+              onPress={async () => {
+                if (togglingSubtaskIds.has(st.id)) return;
+                setTogglingSubtaskIds((prev) => new Set(prev).add(st.id));
+                try {
+                  await toggleSubtask(task.id, st.id, !st.done, task.subtasks ?? []);
+                } finally {
+                  setTogglingSubtaskIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(st.id);
+                    return next;
+                  });
+                }
+              }}
+              disabled={togglingSubtaskIds.has(st.id)}
+              activeOpacity={0.7}
+            >
+              {togglingSubtaskIds.has(st.id) ? (
+                <ActivityIndicator size="small" color={Colors.primary} style={styles.subtaskCheckArea} />
+              ) : st.done ? (
+                <View style={styles.subtaskCheckDone}><Text style={styles.subtaskCheckMark}>✓</Text></View>
+              ) : (
+                <View style={styles.subtaskCheckEmpty} />
+              )}
+              <Text style={[styles.subtaskDetailTitle, st.done && styles.subtaskDetailTitleDone]} numberOfLines={2}>
+                {st.title}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
 
       {/* Task-Metadaten */}
@@ -735,6 +812,105 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizeXS,
     color: Colors.textTertiary,
     marginBottom: Spacing.sm,
+  },
+  // --- Subtasks Detail ---
+  subtasksDetailCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    ...Shadows.sm,
+  },
+  subtasksDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  subtasksProgress: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    fontWeight: Typography.weightMedium,
+  },
+  subtaskDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separatorOpaque,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  subtaskCheckArea: {
+    width: 22,
+    height: 22,
+    marginRight: Spacing.sm,
+  },
+  subtaskCheckEmpty: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: Colors.separator,
+    marginRight: Spacing.sm,
+  },
+  subtaskCheckDone: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  subtaskCheckMark: {
+    color: Colors.textOnPrimary,
+    fontSize: 12,
+    fontWeight: Typography.weightBold,
+  },
+  subtaskDetailTitle: {
+    flex: 1,
+    fontSize: Typography.sizeSM,
+    color: Colors.textPrimary,
+  },
+  subtaskDetailTitleDone: {
+    textDecorationLine: 'line-through',
+    color: Colors.textTertiary,
+  },
+  // --- Edit Subtasks ---
+  editSubtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separatorOpaque,
+  },
+  editSubtaskCheck: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editSubtaskTitle: {
+    flex: 1,
+    fontSize: Typography.sizeSM,
+    color: Colors.textPrimary,
+    marginLeft: Spacing.xs,
+  },
+  editSubtaskTitleDone: {
+    textDecorationLine: 'line-through',
+    color: Colors.textTertiary,
+  },
+  editSubtaskRemove: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: Spacing.xs,
+  },
+  editSubtaskRemoveText: {
+    fontSize: Typography.sizeLG,
+    color: Colors.textTertiary,
+    fontWeight: Typography.weightMedium,
   },
   // --- Edit Button ---
   editButton: {

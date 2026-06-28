@@ -30,6 +30,18 @@ export interface UserSnapshot {
 /** Prioritätsstufen */
 export type Priority = 'low' | 'medium' | 'high';
 
+/** Subtask — abhakbarer Unterpunkt einer Aufgabe */
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+/** Erzeugt eine einfache lokale ID (keine Dependency nötig) */
+export function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 /** Task-Dokument aus Firestore */
 export interface Task {
   id: string;
@@ -43,6 +55,7 @@ export interface Task {
   labels: string[];
   effortEstimate: number | null; // Minuten
   deadline: unknown | null; // Firestore Timestamp
+  subtasks: Subtask[];
   createdAt: unknown; // Firestore Timestamp
   updatedAt: unknown;
   completedAt: unknown | null;
@@ -56,6 +69,7 @@ export interface CreateTaskInput {
   labels?: string[];
   effortEstimate?: number | null;
   deadline?: Date | null;
+  subtasks?: Subtask[];
 }
 
 const tasksCollection = collection(db, 'tasks');
@@ -86,6 +100,7 @@ export async function createTask(
     labels: input.labels ?? [],
     effortEstimate: input.effortEstimate ?? null,
     deadline: input.deadline ? Timestamp.fromDate(input.deadline) : null,
+    subtasks: (input.subtasks ?? []).map((s) => ({ id: s.id, title: s.title, done: s.done })),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     completedAt: null,
@@ -152,6 +167,29 @@ export async function updateTask(
     labels: input.labels ?? [],
     effortEstimate: input.effortEstimate ?? null,
     deadline: input.deadline ? Timestamp.fromDate(input.deadline) : null,
+    ...(input.subtasks !== undefined && {
+      subtasks: input.subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done })),
+    }),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Schaltet den done-Status eines Subtasks um.
+ * Liest die aktuelle subtasks-Liste, ändert den Eintrag und schreibt zurück.
+ */
+export async function toggleSubtask(
+  taskId: string,
+  subtaskId: string,
+  nextDone: boolean,
+  currentSubtasks: Subtask[],
+): Promise<void> {
+  const taskRef = doc(db, 'tasks', taskId);
+  const updated = currentSubtasks.map((s) =>
+    s.id === subtaskId ? { ...s, done: nextDone } : s,
+  );
+  await updateDoc(taskRef, {
+    subtasks: updated.map((s) => ({ id: s.id, title: s.title, done: s.done })),
     updatedAt: serverTimestamp(),
   });
 }

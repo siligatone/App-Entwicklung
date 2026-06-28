@@ -334,6 +334,15 @@ export default function TasksScreen() {
                     )}
                   </View>
                 )}
+
+                {/* Subtask-Fortschritt */}
+                {(task.subtasks ?? []).length > 0 && (
+                  <View style={styles.subtaskProgress}>
+                    <Text style={styles.subtaskProgressText}>
+                      {(task.subtasks ?? []).filter((s) => s.done).length}/{(task.subtasks ?? []).length} Unterpunkte
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -564,6 +573,15 @@ const styles = StyleSheet.create({
   },
   metaBadgeText: {
     fontSize: Typography.sizeXS,
+    fontWeight: Typography.weightMedium,
+  },
+  // --- Subtask Progress ---
+  subtaskProgress: {
+    marginTop: Spacing.xs,
+  },
+  subtaskProgressText: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
     fontWeight: Typography.weightMedium,
   },
   // --- Footer ---
