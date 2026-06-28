@@ -14,25 +14,42 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedProfile, clearUserData, type CachedProfile } from '../../lib/storage';
+import { getCachedProfile, getCachedGroup, clearUserData, clearGroupCache, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { deleteUserProfile } from '../../lib/user-service';
+import { leaveGroup, subscribeToGroup, type Group } from '../../lib/group-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<CachedProfile | null>(null);
+  const [cachedGroup, setCachedGroup] = useState<CachedGroup | null>(null);
+  const [groupDetail, setGroupDetail] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
-    getCachedProfile().then((p) => {
+    Promise.all([getCachedProfile(), getCachedGroup()]).then(([p, g]) => {
       setProfile(p);
+      setCachedGroup(g);
       setLoading(false);
     });
   }, []);
+
+  // Echtzeit-Listener für Gruppendetails (Mitgliederanzahl etc.)
+  useEffect(() => {
+    if (!cachedGroup) return;
+    const unsubscribe = subscribeToGroup(
+      cachedGroup.groupId,
+      (g) => setGroupDetail(g),
+      () => {}, // Fehler still ignorieren
+    );
+    return () => unsubscribe();
+  }, [cachedGroup]);
 
   function handleReset() {
     const doReset = async () => {
@@ -70,6 +87,39 @@ export default function ProfileScreen() {
     }
   }
 
+  function handleLeaveGroup() {
+    const doLeave = async () => {
+      if (!cachedGroup || !profile) return;
+      setLeaving(true);
+      setResetError(null);
+
+      try {
+        await leaveGroup(cachedGroup.groupId, profile.userId);
+        await clearGroupCache();
+        router.replace('/group-setup');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+        setResetError(`Gruppe konnte nicht verlassen werden: ${message}`);
+        setLeaving(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (confirm('Gruppe wirklich verlassen? Du kannst danach einer neuen Gruppe beitreten.')) {
+        doLeave();
+      }
+    } else {
+      Alert.alert(
+        'Gruppe verlassen',
+        'Du kannst danach einer neuen Gruppe beitreten oder eine neue erstellen.',
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          { text: 'Verlassen', style: 'destructive', onPress: doLeave },
+        ],
+      );
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -79,7 +129,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       {/* Profil-Karte */}
       <View style={styles.profileCard}>
         <Text style={styles.profileEmoji}>{profile?.emoji ?? '👤'}</Text>
@@ -94,15 +144,48 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* Gruppen-Karte */}
+      {cachedGroup && (
+        <View style={styles.groupCard}>
+          <Text style={styles.groupTitle}>{cachedGroup.name}</Text>
+
+          <View style={styles.groupInfoRow}>
+            <Text style={styles.groupInfoLabel}>Join-Code</Text>
+            <Text style={styles.groupInfoCode}>{cachedGroup.joinCode}</Text>
+          </View>
+
+          {groupDetail && (
+            <View style={styles.groupInfoRow}>
+              <Text style={styles.groupInfoLabel}>Mitglieder</Text>
+              <Text style={styles.groupInfoValue}>{groupDetail.memberIds.length}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[styles.leaveButton, leaving && styles.leaveButtonDisabled]}
+            onPress={handleLeaveGroup}
+            disabled={leaving}
+            accessibilityLabel="Gruppe verlassen"
+          >
+            {leaving ? (
+              <ActivityIndicator color={Colors.danger} />
+            ) : (
+              <Text style={styles.leaveButtonText}>Gruppe verlassen</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Hinweis */}
       <View style={styles.infoCard}>
         <Text style={styles.infoText}>
-          Dies ist ein Demo-Profil. Kein echtes Login, keine Passwörter.
-          Die Geräte-ID wird lokal gespeichert.
+          Dies ist ein Demo-Profil. Kein echtes Login, keine Passwörter.{'\n'}
+          Gruppen und Rechte sind reine Demo-UI-Guards.{'\n'}
+          Produktiv wären Firebase Auth + Security Rules nötig.
         </Text>
       </View>
 
-      {/* Fehler beim Reset */}
+      {/* Fehler */}
       {resetError && (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{resetError}</Text>
@@ -122,8 +205,7 @@ export default function ProfileScreen() {
           <Text style={styles.resetButtonText}>Profil zurücksetzen</Text>
         )}
       </TouchableOpacity>
-
-    </View>
+    </ScrollView>
   );
 }
 
@@ -134,11 +216,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.backgroundPrimary,
   },
-  container: {
+  scroll: {
     flex: 1,
     backgroundColor: Colors.backgroundPrimary,
+  },
+  container: {
     padding: Spacing.lg,
     paddingTop: Spacing.xxl,
+    paddingBottom: Spacing.xxl,
     alignItems: 'center',
   },
   profileCard: {
@@ -179,6 +264,64 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizeSM,
     color: Colors.textSecondary,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  // --- Gruppe ---
+  groupCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    width: '100%',
+    marginBottom: Spacing.md,
+    ...Shadows.sm,
+  },
+  groupTitle: {
+    fontSize: Typography.sizeLG,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  groupInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separatorOpaque,
+  },
+  groupInfoLabel: {
+    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
+  },
+  groupInfoCode: {
+    fontSize: Typography.sizeMD,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.primary,
+    letterSpacing: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  groupInfoValue: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textPrimary,
+  },
+  leaveButton: {
+    marginTop: Spacing.md,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  leaveButtonDisabled: {
+    opacity: 0.6,
+  },
+  leaveButtonText: {
+    color: Colors.danger,
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
   },
   infoCard: {
     backgroundColor: Colors.backgroundCard,

@@ -124,8 +124,21 @@ export default function TasksScreen() {
     return () => unsubscribe();
   }, [group]);
 
+  /** Prüft ob der aktuelle Nutzer diese Aufgabe erledigen/wieder öffnen darf (Demo-UI-Guard). */
+  function canToggle(task: Task): boolean {
+    if (!profile) return false;
+    if (!task.assignedTo) return true; // Keine Zuweisung → alle dürfen
+    return task.assignedTo.userId === profile.userId;
+  }
+
+  /** Prüft ob der aktuelle Nutzer diese Aufgabe löschen darf (Demo-UI-Guard). */
+  function canDelete(task: Task): boolean {
+    if (!profile) return false;
+    return task.createdBy.userId === profile.userId;
+  }
+
   async function handleToggle(task: Task) {
-    if (!profile || togglingIds.has(task.id)) return;
+    if (!profile || togglingIds.has(task.id) || !canToggle(task)) return;
 
     setTogglingIds((prev) => new Set(prev).add(task.id));
 
@@ -246,11 +259,11 @@ export default function TasksScreen() {
             style={[styles.taskCard, task.done && styles.taskCardDone]}
           >
             <View style={styles.taskRow}>
-              {/* Check-Button — offen und erledigt antippbar */}
+              {/* Check-Button — nur erlaubt wenn canToggle */}
               <TouchableOpacity
                 style={styles.checkButton}
                 onPress={() => handleToggle(task)}
-                disabled={isToggling}
+                disabled={isToggling || !canToggle(task)}
                 accessibilityLabel={
                   task.done
                     ? `Aufgabe "${task.title}" wieder öffnen`
@@ -300,6 +313,12 @@ export default function TasksScreen() {
                       Für {task.assignedTo.displayName} {task.assignedTo.emoji}
                     </Text>
                   </View>
+                )}
+
+                {task.assignedTo && !canToggle(task) && (
+                  <Text style={styles.permissionHint}>
+                    Nur {task.assignedTo.displayName} kann diese Aufgabe abschließen.
+                  </Text>
                 )}
 
                 {/* Metadata badges */}
@@ -368,18 +387,20 @@ export default function TasksScreen() {
                   </Text>
                 )}
               </View>
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => handleDelete(task)}
-                disabled={deletingIds.has(task.id)}
-                accessibilityLabel={`Aufgabe "${task.title}" löschen`}
-              >
-                {deletingIds.has(task.id) ? (
-                  <ActivityIndicator size="small" color={Colors.danger} />
-                ) : (
-                  <Text style={styles.deleteButtonText}>Löschen</Text>
-                )}
-              </TouchableOpacity>
+              {canDelete(task) && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDelete(task)}
+                  disabled={deletingIds.has(task.id)}
+                  accessibilityLabel={`Aufgabe "${task.title}" löschen`}
+                >
+                  {deletingIds.has(task.id) ? (
+                    <ActivityIndicator size="small" color={Colors.danger} />
+                  ) : (
+                    <Text style={styles.deleteButtonText}>Löschen</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         );
@@ -563,6 +584,12 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizeXS,
     fontWeight: Typography.weightMedium,
     color: Colors.primary,
+  },
+  permissionHint: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginTop: Spacing.xs,
   },
   // --- Metadata ---
   metaRow: {

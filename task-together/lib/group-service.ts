@@ -19,6 +19,7 @@ import {
   onSnapshot,
   serverTimestamp,
   arrayUnion,
+  arrayRemove,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -135,6 +136,28 @@ export async function joinGroup(
   await updateDoc(userRef, { groupId: group.groupId, updatedAt: serverTimestamp() });
 
   return { ...group, memberIds: [...group.memberIds, userProfile.userId] };
+}
+
+/**
+ * Verlässt eine Gruppe.
+ * - Entfernt userId aus memberIds via arrayRemove
+ * - Setzt users/{userId}.groupId auf null
+ *
+ * Gruppe wird NICHT gelöscht, auch wenn letztes Mitglied geht.
+ * Tasks bleiben unberührt.
+ */
+export async function leaveGroup(
+  groupId: string,
+  userId: string,
+): Promise<void> {
+  const groupRef = doc(db, 'groups', groupId);
+  await updateDoc(groupRef, {
+    memberIds: arrayRemove(userId),
+    updatedAt: serverTimestamp(),
+  });
+
+  const userRef = doc(db, 'users', userId);
+  await updateDoc(userRef, { groupId: null, updatedAt: serverTimestamp() });
 }
 
 /**

@@ -16,7 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getCachedGroup, type CachedGroup } from '../../lib/storage';
+import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTask, updateTask, toggleSubtask, generateId, type Task, type Priority, type Subtask } from '../../lib/task-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -80,6 +80,7 @@ function formatDeadlineDetail(timestamp: unknown): { text: string; overdue: bool
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [group, setGroup] = useState<CachedGroup | null>(null);
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +104,7 @@ export default function TaskDetailScreen() {
   const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
 
   useEffect(() => {
+    getCachedProfile().then(setProfile);
     getCachedGroup().then(setGroup);
   }, []);
 
@@ -616,10 +618,18 @@ export default function TaskDetailScreen() {
         )}
       </View>
 
-      {/* Bearbeiten-Button */}
-      <TouchableOpacity style={styles.editButton} onPress={startEditing}>
-        <Text style={styles.editButtonText}>Bearbeiten</Text>
-      </TouchableOpacity>
+      {/* Bearbeiten-Button — nur für Ersteller (Demo-UI-Guard) */}
+      {profile && task.createdBy.userId === profile.userId ? (
+        <TouchableOpacity style={styles.editButton} onPress={startEditing}>
+          <Text style={styles.editButtonText}>Bearbeiten</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.permissionNote}>
+          <Text style={styles.permissionNoteText}>
+            Nur {task.createdBy.displayName} {task.createdBy.emoji} kann diese Aufgabe bearbeiten.
+          </Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -922,6 +932,19 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizeLG,
     color: Colors.textTertiary,
     fontWeight: Typography.weightMedium,
+  },
+  // --- Permission Note ---
+  permissionNote: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    ...Shadows.sm,
+  },
+  permissionNoteText: {
+    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   // --- Edit Button ---
   editButton: {
