@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../../lib/storage';
-import { createTask, type UserSnapshot } from '../../lib/task-service';
+import { createTask, type UserSnapshot, type Priority } from '../../lib/task-service';
 import { subscribeToUsers, type UserProfile } from '../../lib/user-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -31,6 +31,10 @@ export default function CreateScreen() {
   const [error, setError] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [assignedTo, setAssignedTo] = useState<UserSnapshot | null>(null);
+  const [priority, setPriority] = useState<Priority | null>(null);
+  const [labels, setLabels] = useState<Set<string>>(new Set());
+  const [effortEstimate, setEffortEstimate] = useState<number | null>(null);
+  const [deadlineDays, setDeadlineDays] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -59,8 +63,18 @@ export default function CreateScreen() {
     setError(null);
 
     try {
+      const deadlineDate = deadlineDays != null
+        ? new Date(Date.now() + deadlineDays * 86400000)
+        : null;
       await createTask(
-        { title: trimmedTitle, description: description.trim() },
+        {
+          title: trimmedTitle,
+          description: description.trim(),
+          priority,
+          labels: [...labels],
+          effortEstimate,
+          deadline: deadlineDate,
+        },
         {
           userId: profile.userId,
           displayName: profile.displayName,
@@ -71,6 +85,10 @@ export default function CreateScreen() {
       setTitle('');
       setDescription('');
       setAssignedTo(null);
+      setPriority(null);
+      setLabels(new Set());
+      setEffortEstimate(null);
+      setDeadlineDays(null);
       setSuggestions([]);
       setAddedSuggestions(new Set());
       setSuggestSource(null);
@@ -181,6 +199,103 @@ export default function CreateScreen() {
             })}
           </View>
         )}
+
+        {/* Priorität */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Priorität</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {([
+              { value: null, label: 'Keine' },
+              { value: 'low' as Priority, label: 'Niedrig' },
+              { value: 'medium' as Priority, label: 'Mittel' },
+              { value: 'high' as Priority, label: 'Hoch' },
+            ] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={[styles.metaChip, priority === opt.value && styles.metaChipSelected]}
+                onPress={() => setPriority(opt.value)}
+              >
+                <Text style={[styles.metaChipText, priority === opt.value && styles.metaChipTextSelected]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Labels */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Labels</Text>
+          <View style={styles.chipWrap}>
+            {['Uni', 'Arbeit', 'Privat', 'Dringend', 'Idee'].map((lbl) => {
+              const isSelected = labels.has(lbl);
+              return (
+                <TouchableOpacity
+                  key={lbl}
+                  style={[styles.metaChip, isSelected && styles.metaChipSelected]}
+                  onPress={() => setLabels((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(lbl)) next.delete(lbl); else next.add(lbl);
+                    return next;
+                  })}
+                >
+                  <Text style={[styles.metaChipText, isSelected && styles.metaChipTextSelected]}>
+                    {lbl}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Aufwand */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Geschätzter Aufwand</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {([
+              { value: null, label: 'Keine' },
+              { value: 15, label: '15 Min' },
+              { value: 30, label: '30 Min' },
+              { value: 60, label: '1h' },
+              { value: 120, label: '2h' },
+              { value: 240, label: '4h' },
+            ] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={[styles.metaChip, effortEstimate === opt.value && styles.metaChipSelected]}
+                onPress={() => setEffortEstimate(opt.value)}
+              >
+                <Text style={[styles.metaChipText, effortEstimate === opt.value && styles.metaChipTextSelected]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Deadline */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Deadline</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {([
+              { value: null, label: 'Keine' },
+              { value: 0, label: 'Heute' },
+              { value: 1, label: 'Morgen' },
+              { value: 3, label: 'In 3 Tagen' },
+              { value: 7, label: 'In 1 Woche' },
+            ] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={[styles.metaChip, deadlineDays === opt.value && styles.metaChipSelected]}
+                onPress={() => setDeadlineDays(opt.value)}
+              >
+                <Text style={[styles.metaChipText, deadlineDays === opt.value && styles.metaChipTextSelected]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         {/* Zuweisen an (optional) */}
         <View style={styles.card}>
@@ -368,6 +483,37 @@ const styles = StyleSheet.create({
   },
   suggestionTextAdded: {
     color: Colors.success,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  metaChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.backgroundPrimary,
+    borderWidth: 1.5,
+    borderColor: Colors.separatorOpaque,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  metaChipSelected: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  metaChipText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textSecondary,
+  },
+  metaChipTextSelected: {
+    color: Colors.textOnPrimary,
   },
   noUsersHint: {
     fontSize: Typography.sizeSM,

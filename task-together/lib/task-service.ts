@@ -15,6 +15,7 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -26,6 +27,9 @@ export interface UserSnapshot {
   emoji: string;
 }
 
+/** Prioritätsstufen */
+export type Priority = 'low' | 'medium' | 'high';
+
 /** Task-Dokument aus Firestore */
 export interface Task {
   id: string;
@@ -35,6 +39,10 @@ export interface Task {
   createdBy: UserSnapshot;
   completedBy: UserSnapshot | null;
   assignedTo: UserSnapshot | null;
+  priority: Priority | null;
+  labels: string[];
+  effortEstimate: number | null; // Minuten
+  deadline: unknown | null; // Firestore Timestamp
   createdAt: unknown; // Firestore Timestamp
   updatedAt: unknown;
   completedAt: unknown | null;
@@ -44,6 +52,10 @@ export interface Task {
 export interface CreateTaskInput {
   title: string;
   description: string;
+  priority?: Priority | null;
+  labels?: string[];
+  effortEstimate?: number | null;
+  deadline?: Date | null;
 }
 
 const tasksCollection = collection(db, 'tasks');
@@ -70,6 +82,10 @@ export async function createTask(
     assignedTo: assignedTo
       ? { userId: assignedTo.userId, displayName: assignedTo.displayName, emoji: assignedTo.emoji }
       : null,
+    priority: input.priority ?? null,
+    labels: input.labels ?? [],
+    effortEstimate: input.effortEstimate ?? null,
+    deadline: input.deadline ? Timestamp.fromDate(input.deadline) : null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     completedAt: null,
@@ -122,7 +138,7 @@ export async function deleteTask(taskId: string): Promise<void> {
 }
 
 /**
- * Aktualisiert Titel und/oder Beschreibung eines Tasks.
+ * Aktualisiert Titel, Beschreibung und Metadaten eines Tasks.
  */
 export async function updateTask(
   taskId: string,
@@ -132,6 +148,10 @@ export async function updateTask(
   await updateDoc(taskRef, {
     title: input.title,
     description: input.description,
+    priority: input.priority ?? null,
+    labels: input.labels ?? [],
+    effortEstimate: input.effortEstimate ?? null,
+    deadline: input.deadline ? Timestamp.fromDate(input.deadline) : null,
     updatedAt: serverTimestamp(),
   });
 }

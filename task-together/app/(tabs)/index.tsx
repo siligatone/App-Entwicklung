@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getCachedProfile, type CachedProfile } from '../../lib/storage';
-import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task } from '../../lib/task-service';
+import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task, type Priority } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 /** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
@@ -57,6 +57,33 @@ function sortTasks(tasks: Task[]): Task[] {
     const dateB = toDate(b.createdAt)?.getTime() ?? 0;
     return dateB - dateA;
   });
+}
+
+const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
+  low: { label: 'Niedrig', color: Colors.success },
+  medium: { label: 'Mittel', color: Colors.warning },
+  high: { label: 'Hoch', color: Colors.danger },
+};
+
+function formatEffort(minutes: number | null | undefined): string | null {
+  if (minutes == null) return null;
+  if (minutes < 60) return `${minutes} Min`;
+  return `${minutes / 60}h`;
+}
+
+function formatDeadline(timestamp: unknown): { text: string; overdue: boolean } | null {
+  const date = toDate(timestamp);
+  if (!date) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const deadlineDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((deadlineDay.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays < 0) return { text: 'Überfällig', overdue: true };
+  if (diffDays === 0) return { text: 'Heute fällig', overdue: false };
+  if (diffDays === 1) return { text: 'Morgen fällig', overdue: false };
+  const formatted = date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  return { text: `Fällig ${formatted}`, overdue: false };
 }
 
 export default function TasksScreen() {
@@ -267,6 +294,44 @@ export default function TasksScreen() {
                     <Text style={styles.assignedText}>
                       Für {task.assignedTo.displayName} {task.assignedTo.emoji}
                     </Text>
+                  </View>
+                )}
+
+                {/* Metadata badges */}
+                {!!(task.priority || (task.labels && task.labels.length > 0) || task.effortEstimate || task.deadline) && (
+                  <View style={styles.metaRow}>
+                    {task.priority && PRIORITY_CONFIG[task.priority] && (
+                      <View style={[styles.metaBadge, { backgroundColor: PRIORITY_CONFIG[task.priority].color + '18' }]}>
+                        <Text style={[styles.metaBadgeText, { color: PRIORITY_CONFIG[task.priority].color }]}>
+                          {PRIORITY_CONFIG[task.priority].label}
+                        </Text>
+                      </View>
+                    )}
+                    {task.labels?.map((lbl) => (
+                      <View key={lbl} style={[styles.metaBadge, { backgroundColor: Colors.primary + '15' }]}>
+                        <Text style={[styles.metaBadgeText, { color: Colors.primary }]}>{lbl}</Text>
+                      </View>
+                    ))}
+                    {formatEffort(task.effortEstimate) && (
+                      <View style={[styles.metaBadge, { backgroundColor: Colors.textTertiary + '18' }]}>
+                        <Text style={[styles.metaBadgeText, { color: Colors.textSecondary }]}>
+                          ⏱ {formatEffort(task.effortEstimate)}
+                        </Text>
+                      </View>
+                    )}
+                    {formatDeadline(task.deadline) && (
+                      <View style={[styles.metaBadge, {
+                        backgroundColor: (formatDeadline(task.deadline)!.overdue && !task.done)
+                          ? Colors.danger + '18' : Colors.warning + '18',
+                      }]}>
+                        <Text style={[styles.metaBadgeText, {
+                          color: (formatDeadline(task.deadline)!.overdue && !task.done)
+                            ? Colors.danger : Colors.warning,
+                        }]}>
+                          {formatDeadline(task.deadline)!.text}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
               </TouchableOpacity>
@@ -484,6 +549,22 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizeXS,
     fontWeight: Typography.weightMedium,
     color: Colors.primary,
+  },
+  // --- Metadata ---
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  metaBadge: {
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+  },
+  metaBadgeText: {
+    fontSize: Typography.sizeXS,
+    fontWeight: Typography.weightMedium,
   },
   // --- Footer ---
   taskFooter: {
