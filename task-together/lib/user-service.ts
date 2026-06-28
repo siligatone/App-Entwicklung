@@ -23,6 +23,7 @@ export interface UserProfile {
   userId: string;
   displayName: string;
   emoji: string;
+  groupId?: string | null;
   createdAt: unknown; // Firestore Timestamp
   updatedAt: unknown;
 }

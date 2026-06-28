@@ -12,8 +12,9 @@
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getExistingUserId, getCachedProfile, cacheProfile } from '../lib/storage';
+import { getExistingUserId, getCachedProfile, cacheProfile, getCachedGroup, cacheGroup, clearGroupCache } from '../lib/storage';
 import { getUserProfile } from '../lib/user-service';
+import { getGroup } from '../lib/group-service';
 import { Colors } from '../constants/design';
 
 export default function Index() {
@@ -21,38 +22,78 @@ export default function Index() {
 
   useEffect(() => {
     async function redirect() {
+      // 1. userId vorhanden?
       const userId = await getExistingUserId();
-
       if (!userId) {
         router.replace('/onboarding');
         return;
       }
 
-      // userId vorhanden — prüfe ob lokaler Cache existiert
-      const cached = await getCachedProfile();
-      if (cached) {
-        router.replace('/(tabs)');
+      // 2. Profil vorhanden? (Cache oder Firestore)
+      let profile = await getCachedProfile();
+      if (!profile) {
+        try {
+          const firestoreProfile = await getUserProfile(userId);
+          if (firestoreProfile) {
+            await cacheProfile({
+              userId: firestoreProfile.userId,
+              displayName: firestoreProfile.displayName,
+              emoji: firestoreProfile.emoji,
+            });
+            profile = { userId: firestoreProfile.userId, displayName: firestoreProfile.displayName, emoji: firestoreProfile.emoji };
+          } else {
+            router.replace('/onboarding');
+            return;
+          }
+        } catch {
+          router.replace('/onboarding');
+          return;
+        }
+      }
+
+      // 3. Gruppe vorhanden?
+      const cachedGroup = await getCachedGroup();
+      if (cachedGroup) {
+        // Prüfe ob die Gruppe in Firestore noch existiert
+        try {
+          const firestoreGroup = await getGroup(cachedGroup.groupId);
+          if (firestoreGroup) {
+            router.replace('/(tabs)');
+          } else {
+            // Gruppe existiert nicht mehr — Cache löschen
+            await clearGroupCache();
+            router.replace('/group-setup');
+          }
+        } catch {
+          // Netzwerkfehler — mit Cache weiterarbeiten
+          router.replace('/(tabs)');
+        }
         return;
       }
 
-      // Kein lokaler Cache — prüfe Firestore
+      // Kein Gruppen-Cache — prüfe ob Firestore-Profil eine groupId hat
       try {
         const firestoreProfile = await getUserProfile(userId);
-        if (firestoreProfile) {
-          // Profil in Firestore gefunden — Cache aktualisieren
-          await cacheProfile({
-            userId: firestoreProfile.userId,
-            displayName: firestoreProfile.displayName,
-            emoji: firestoreProfile.emoji,
-          });
-          router.replace('/(tabs)');
+        if (firestoreProfile?.groupId) {
+          const group = await getGroup(firestoreProfile.groupId);
+          if (group) {
+            await cacheGroup({
+              groupId: group.groupId,
+              name: group.name,
+              joinCode: group.joinCode,
+            });
+            router.replace('/(tabs)');
+          } else {
+            // groupId zeigt auf nicht-existierende Gruppe
+            await clearGroupCache();
+            router.replace('/group-setup');
+          }
         } else {
-          // userId existiert lokal, aber kein Firestore-Profil → Onboarding
-          router.replace('/onboarding');
+          router.replace('/group-setup');
         }
       } catch {
-        // Netzwerkfehler → mit lokalem Cache versuchen, sonst Onboarding
-        router.replace('/onboarding');
+        // Netzwerkfehler ohne Cache → group-setup
+        router.replace('/group-setup');
       }
     }
     redirect();
