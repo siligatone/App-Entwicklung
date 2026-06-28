@@ -13,8 +13,9 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedGroup, type CachedGroup } from '../../lib/storage';
+import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, type Task } from '../../lib/task-service';
+import { prioritizeTasksLocally, type PrioritySuggestion, type PriorityInputTask } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 /** Firestore Timestamp zu Date */
@@ -51,21 +52,31 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [group, setGroup] = useState<CachedGroup | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prioritySuggestions, setPrioritySuggestions] = useState<PrioritySuggestion[]>([]);
+  const [priorityLoading, setPriorityLoading] = useState(false);
 
   useEffect(() => {
+    getCachedProfile().then(setProfile);
     getCachedGroup().then(setGroup);
   }, []);
 
   useEffect(() => {
-    if (!group) return;
+    if (!profile) return;
 
     const unsubscribe = subscribeToTasks(
       (newTasks) => {
-        setTasks(newTasks);
+        const filtered = group
+          ? newTasks.filter((t) =>
+              (t.groupId === group.groupId) ||
+              (!t.groupId && t.createdBy.userId === profile.userId),
+            )
+          : newTasks.filter((t) => !t.groupId && t.createdBy.userId === profile.userId);
+        setTasks(filtered);
         setLoading(false);
         setError(null);
       },
@@ -73,16 +84,19 @@ export default function DashboardScreen() {
         setError(errorMsg);
         setLoading(false);
       },
-      group.groupId,
     );
     return () => unsubscribe();
-  }, [group]);
+  }, [group, profile]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
     const open = tasks.filter((t) => !t.done);
     const done = tasks.filter((t) => t.done);
     const progress = total > 0 ? Math.round((done.length / total) * 100) : 0;
+
+    // Persönlich vs. Gruppe
+    const personalOpen = open.filter((t) => !t.groupId).length;
+    const groupOpen = open.filter((t) => !!t.groupId).length;
 
     // Offene nach Priorität
     const priorityCounts = {
@@ -145,8 +159,42 @@ export default function DashboardScreen() {
       personStats,
       unassignedCount,
       labelStats,
+      personalOpen,
+      groupOpen,
     };
   }, [tasks]);
+
+  function handleSuggestPriority() {
+    setPriorityLoading(true);
+    setPrioritySuggestions([]);
+
+    const openTasks = tasks.filter((t) => !t.done).slice(0, 10);
+
+    const inputTasks: PriorityInputTask[] = openTasks.map((t) => {
+      const dl = toDate(t.deadline);
+      const subtasks = t.subtasks ?? [];
+      const doneCount = subtasks.filter((s) => s.done).length;
+
+      // Lokales Datumsformat statt toISOString() (UTC-Verschiebung vermeiden)
+      const dlString = dl
+        ? `${dl.getFullYear()}-${String(dl.getMonth() + 1).padStart(2, '0')}-${String(dl.getDate()).padStart(2, '0')}`
+        : null;
+
+      return {
+        taskId: t.id,
+        title: t.title,
+        description: t.description ? t.description.slice(0, 300) : '',
+        deadline: dlString,
+        priority: t.priority ?? null,
+        effortEstimate: t.effortEstimate ?? null,
+        assignedTo: t.assignedTo?.displayName ?? null,
+        subtaskProgress: subtasks.length > 0 ? `${doneCount}/${subtasks.length}` : null,
+      };
+    });
+
+    setPrioritySuggestions(prioritizeTasksLocally(inputTasks));
+    setPriorityLoading(false);
+  }
 
   if (loading) {
     return (
@@ -212,6 +260,23 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Persönlich vs. Gruppe */}
+      {group && stats.openCount > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Offene nach Bereich</Text>
+          <View style={styles.listRow}>
+            <View style={[styles.priorityDot, { backgroundColor: Colors.warning }]} />
+            <Text style={styles.listLabel}>Persönlich</Text>
+            <Text style={styles.listCount}>{stats.personalOpen}</Text>
+          </View>
+          <View style={styles.listRow}>
+            <View style={[styles.priorityDot, { backgroundColor: Colors.primary }]} />
+            <Text style={styles.listLabel}>{group.name}</Text>
+            <Text style={styles.listCount}>{stats.groupOpen}</Text>
+          </View>
+        </View>
+      )}
+
       {/* Offene nach Priorität */}
       {stats.openCount > 0 && (
         <View style={styles.card}>
@@ -251,12 +316,20 @@ export default function DashboardScreen() {
             >
               <View style={styles.deadlineContent}>
                 <Text style={styles.deadlineTitle} numberOfLines={1}>{task.title}</Text>
-                <Text style={[
-                  styles.deadlineDate,
-                  info.overdue && styles.deadlineDateOverdue,
-                ]}>
-                  {info.text}
-                </Text>
+                <View style={styles.deadlineMetaRow}>
+                  <Text style={[
+                    styles.deadlineDate,
+                    info.overdue && styles.deadlineDateOverdue,
+                  ]}>
+                    {info.text}
+                  </Text>
+                  <Text style={[
+                    styles.deadlineScopeText,
+                    { color: task.groupId ? Colors.primary : Colors.warning },
+                  ]}>
+                    {task.groupId && group ? group.name : 'Persönlich'}
+                  </Text>
+                </View>
               </View>
               <Text style={styles.deadlineChevron}>›</Text>
             </TouchableOpacity>
@@ -294,6 +367,90 @@ export default function DashboardScreen() {
               </View>
             ))}
           </View>
+        </View>
+      )}
+
+      {/* Empfohlene Reihenfolge */}
+      {stats.openCount > 0 && (
+        <View style={styles.card}>
+          <TouchableOpacity
+            style={[styles.suggestButton, priorityLoading && styles.suggestButtonDisabled]}
+            onPress={handleSuggestPriority}
+            disabled={priorityLoading}
+          >
+            {priorityLoading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Text style={styles.suggestButtonText}>
+                Empfohlene Reihenfolge
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {prioritySuggestions.length > 0 && (
+            <>
+              <Text style={styles.prioritySourceLabel}>
+                Empfehlung nach Deadline, Priorität und Aufwand
+              </Text>
+
+              {prioritySuggestions.map((suggestion) => {
+                const task = tasks.find((t) => t.id === suggestion.taskId);
+                if (!task) return null;
+
+                const deadlineInfo = getDeadlineInfo(task.deadline);
+
+                return (
+                  <TouchableOpacity
+                    key={suggestion.taskId}
+                    style={styles.priorityRow}
+                    onPress={() => router.push(`/task/${suggestion.taskId}`)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.priorityRank}>
+                      <Text style={styles.priorityRankText}>{suggestion.rank}</Text>
+                    </View>
+                    <View style={styles.priorityContent}>
+                      <Text style={styles.priorityTitle} numberOfLines={1}>
+                        {task.title}
+                      </Text>
+                      <Text style={styles.priorityReason} numberOfLines={1}>
+                        {suggestion.reason}
+                      </Text>
+                      <View style={styles.priorityBadges}>
+                        {task.priority && PRIORITY_CONFIG[task.priority] && (
+                          <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_CONFIG[task.priority].color + '18' }]}>
+                            <Text style={[styles.priorityBadgeText, { color: PRIORITY_CONFIG[task.priority].color }]}>
+                              {PRIORITY_CONFIG[task.priority].label}
+                            </Text>
+                          </View>
+                        )}
+                        {deadlineInfo && (
+                          <View style={[styles.priorityBadge, {
+                            backgroundColor: deadlineInfo.overdue ? Colors.danger + '18' : Colors.warning + '18',
+                          }]}>
+                            <Text style={[styles.priorityBadgeText, {
+                              color: deadlineInfo.overdue ? Colors.danger : Colors.warning,
+                            }]}>
+                              {deadlineInfo.text}
+                            </Text>
+                          </View>
+                        )}
+                        {task.effortEstimate != null && (
+                          <View style={[styles.priorityBadge, { backgroundColor: Colors.textTertiary + '18' }]}>
+                            <Text style={[styles.priorityBadgeText, { color: Colors.textSecondary }]}>
+                              ⏱ {task.effortEstimate < 60 ? `${task.effortEstimate} Min` : `${task.effortEstimate / 60}h`}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={styles.priorityChevron}>›</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+            </>
+          )}
         </View>
       )}
     </ScrollView>
@@ -464,15 +621,106 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weightMedium,
     marginBottom: 2,
   },
+  deadlineMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   deadlineDate: {
     fontSize: Typography.sizeXS,
     color: Colors.textTertiary,
+  },
+  deadlineScopeText: {
+    fontSize: Typography.sizeXS,
+    fontWeight: Typography.weightMedium,
   },
   deadlineDateOverdue: {
     color: Colors.danger,
     fontWeight: Typography.weightSemiBold,
   },
   deadlineChevron: {
+    fontSize: Typography.sizeLG,
+    color: Colors.textTertiary,
+    marginLeft: Spacing.sm,
+  },
+  // --- KI-Priorisierung ---
+  suggestButton: {
+    backgroundColor: Colors.backgroundPrimary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    borderStyle: 'dashed',
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  suggestButtonDisabled: {
+    opacity: 0.5,
+  },
+  suggestButtonText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.primary,
+  },
+  prioritySourceLabel: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  priorityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separatorOpaque,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  priorityRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  priorityRankText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightBold,
+    color: Colors.primary,
+  },
+  priorityContent: {
+    flex: 1,
+  },
+  priorityTitle: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  priorityReason: {
+    fontSize: Typography.sizeXS,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginBottom: Spacing.xs,
+  },
+  priorityBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  priorityBadge: {
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 1,
+  },
+  priorityBadgeText: {
+    fontSize: 10,
+    fontWeight: Typography.weightMedium,
+  },
+  priorityChevron: {
     fontSize: Typography.sizeLG,
     color: Colors.textTertiary,
     marginLeft: Spacing.sm,

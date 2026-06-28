@@ -13,10 +13,12 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  updateDoc,
   query,
   where,
   onSnapshot,
   serverTimestamp,
+  arrayUnion,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -26,6 +28,7 @@ export interface UserProfile {
   displayName: string;
   emoji: string;
   groupId?: string | null;
+  labels?: string[];
   createdAt: unknown; // Firestore Timestamp
   updatedAt: unknown;
 }
@@ -74,6 +77,41 @@ export async function deleteUserProfile(userId: string): Promise<void> {
  * Wenn groupId angegeben wird, werden nur Mitglieder dieser Gruppe geladen.
  * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
  */
+/**
+ * Echtzeit-Listener für ein einzelnes User-Profil.
+ */
+export function subscribeToUserProfile(
+  userId: string,
+  onProfile: (profile: UserProfile | null) => void,
+  onError: (error: string) => void,
+): Unsubscribe {
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(
+    userRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onProfile(null);
+        return;
+      }
+      onProfile(snapshot.data() as UserProfile);
+    },
+    (error) => {
+      onError(error.message);
+    },
+  );
+}
+
+/**
+ * Fügt ein neues Label zum User-Profil hinzu (idempotent dank arrayUnion).
+ */
+export async function addUserLabel(userId: string, label: string): Promise<void> {
+  const userRef = doc(db, 'users', userId);
+  await updateDoc(userRef, {
+    labels: arrayUnion(label),
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export function subscribeToUsers(
   onUsers: (users: UserProfile[]) => void,
   onError: (error: string) => void,

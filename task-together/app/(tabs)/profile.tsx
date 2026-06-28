@@ -19,7 +19,7 @@ import {
 import { useRouter } from 'expo-router';
 import { getCachedProfile, getCachedGroup, clearUserData, clearGroupCache, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { deleteUserProfile } from '../../lib/user-service';
-import { leaveGroup, subscribeToGroup, type Group } from '../../lib/group-service';
+import { leaveGroup, deleteGroup, subscribeToGroup, type Group } from '../../lib/group-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
 export default function ProfileScreen() {
@@ -30,6 +30,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,11 +58,19 @@ export default function ProfileScreen() {
       setResetError(null);
 
       try {
-        // Zuerst Firestore-Dokument löschen
+        // Zuerst aus Gruppe austreten, damit memberIds sauber bleibt
+        if (cachedGroup && profile?.userId) {
+          try {
+            await leaveGroup(cachedGroup.groupId, profile.userId);
+          } catch {
+            // Gruppe existiert evtl. nicht mehr — weitermachen
+          }
+        }
+        // Dann Firestore-Profil löschen
         if (profile?.userId) {
           await deleteUserProfile(profile.userId);
         }
-        // Dann lokale Daten löschen
+        // Lokale Daten löschen
         await clearUserData();
         router.replace('/onboarding');
       } catch (err) {
@@ -96,7 +105,9 @@ export default function ProfileScreen() {
       try {
         await leaveGroup(cachedGroup.groupId, profile.userId);
         await clearGroupCache();
-        router.replace('/group-setup');
+        setCachedGroup(null);
+        setGroupDetail(null);
+        setLeaving(false);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
         setResetError(`Gruppe konnte nicht verlassen werden: ${message}`);
@@ -115,6 +126,43 @@ export default function ProfileScreen() {
         [
           { text: 'Abbrechen', style: 'cancel' },
           { text: 'Verlassen', style: 'destructive', onPress: doLeave },
+        ],
+      );
+    }
+  }
+
+  const isGroupCreator = !!(groupDetail && profile && groupDetail.createdBy.userId === profile.userId);
+
+  function handleDeleteGroup() {
+    const doDelete = async () => {
+      if (!cachedGroup || !groupDetail) return;
+      setDeleting(true);
+      setResetError(null);
+
+      try {
+        await deleteGroup(cachedGroup.groupId, groupDetail.memberIds);
+        await clearGroupCache();
+        setCachedGroup(null);
+        setGroupDetail(null);
+        setDeleting(false);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+        setResetError(`Gruppe konnte nicht gelöscht werden: ${message}`);
+        setDeleting(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (confirm('Gruppe wirklich löschen? Alle Mitglieder werden entfernt. Aufgaben bleiben erhalten.')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Gruppe löschen',
+        'Alle Mitglieder werden entfernt. Aufgaben bleiben erhalten.',
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          { text: 'Löschen', style: 'destructive', onPress: doDelete },
         ],
       );
     }
@@ -144,7 +192,22 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Gruppen-Karte */}
+      {/* Gruppen-Karte — ohne Gruppe: Erstellen/Beitreten */}
+      {!cachedGroup && (
+        <View style={styles.groupCard}>
+          <Text style={styles.groupTitle}>Keine Gruppe</Text>
+          <Text style={styles.noGroupHint}>
+            Du nutzt die App privat. Erstelle oder tritt einer Gruppe bei, um Aufgaben mit anderen zu teilen.
+          </Text>
+          <TouchableOpacity
+            style={styles.groupActionButton}
+            onPress={() => router.push('/group-setup')}
+          >
+            <Text style={styles.groupActionButtonText}>Gruppe erstellen oder beitreten</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {cachedGroup && (
         <View style={styles.groupCard}>
           <Text style={styles.groupTitle}>{cachedGroup.name}</Text>
@@ -161,29 +224,35 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.leaveButton, leaving && styles.leaveButtonDisabled]}
-            onPress={handleLeaveGroup}
-            disabled={leaving}
-            accessibilityLabel="Gruppe verlassen"
-          >
-            {leaving ? (
-              <ActivityIndicator color={Colors.danger} />
-            ) : (
-              <Text style={styles.leaveButtonText}>Gruppe verlassen</Text>
-            )}
-          </TouchableOpacity>
+          {isGroupCreator ? (
+            <TouchableOpacity
+              style={[styles.leaveButton, deleting && styles.leaveButtonDisabled]}
+              onPress={handleDeleteGroup}
+              disabled={deleting}
+              accessibilityLabel="Gruppe löschen"
+            >
+              {deleting ? (
+                <ActivityIndicator color={Colors.danger} />
+              ) : (
+                <Text style={styles.leaveButtonText}>Gruppe löschen</Text>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.leaveButton, leaving && styles.leaveButtonDisabled]}
+              onPress={handleLeaveGroup}
+              disabled={leaving}
+              accessibilityLabel="Gruppe verlassen"
+            >
+              {leaving ? (
+                <ActivityIndicator color={Colors.danger} />
+              ) : (
+                <Text style={styles.leaveButtonText}>Gruppe verlassen</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       )}
-
-      {/* Hinweis */}
-      <View style={styles.infoCard}>
-        <Text style={styles.infoText}>
-          Dies ist ein Demo-Profil. Kein echtes Login, keine Passwörter.{'\n'}
-          Gruppen und Rechte sind reine Demo-UI-Guards.{'\n'}
-          Produktiv wären Firebase Auth + Security Rules nötig.
-        </Text>
-      </View>
 
       {/* Fehler */}
       {resetError && (
@@ -305,6 +374,26 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weightMedium,
     color: Colors.textPrimary,
   },
+  noGroupHint: {
+    fontSize: Typography.sizeSM,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    lineHeight: 20,
+  },
+  groupActionButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  groupActionButtonText: {
+    color: Colors.textOnPrimary,
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightSemiBold,
+  },
   leaveButton: {
     marginTop: Spacing.md,
     padding: Spacing.sm,
@@ -322,20 +411,6 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     fontSize: Typography.sizeSM,
     fontWeight: Typography.weightMedium,
-  },
-  infoCard: {
-    backgroundColor: Colors.backgroundCard,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    width: '100%',
-    marginBottom: Spacing.lg,
-    ...Shadows.sm,
-  },
-  infoText: {
-    fontSize: Typography.sizeSM,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 20,
   },
   errorBox: {
     backgroundColor: '#FFF5F5',

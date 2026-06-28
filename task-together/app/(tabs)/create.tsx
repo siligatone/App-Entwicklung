@@ -18,9 +18,11 @@ import {
 import { useRouter } from 'expo-router';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { createTask, generateId, type UserSnapshot, type Priority, type Subtask } from '../../lib/task-service';
-import { subscribeToUsers, type UserProfile } from '../../lib/user-service';
+import { subscribeToUsers, subscribeToUserProfile, addUserLabel, type UserProfile } from '../../lib/user-service';
+import { subscribeToGroup, addGroupLabel, type Group } from '../../lib/group-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
+import DatePicker from '../../components/DatePicker';
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -35,51 +37,91 @@ export default function CreateScreen() {
   const [priority, setPriority] = useState<Priority | null>(null);
   const [labels, setLabels] = useState<Set<string>>(new Set());
   const [effortEstimate, setEffortEstimate] = useState<number | null>(null);
-  const [deadlineDays, setDeadlineDays] = useState<number | null>(null);
+  const [deadline, setDeadline] = useState<Date | null>(null);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
+  const [taskScope, setTaskScope] = useState<'personal' | 'group'>('personal');
+  const [newLabelText, setNewLabelText] = useState('');
+  const [groupDetail, setGroupDetail] = useState<Group | null>(null);
+  const [userDetail, setUserDetail] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     getCachedProfile().then(setProfile);
-    getCachedGroup().then(setGroup);
+    getCachedGroup().then((g) => {
+      setGroup(g);
+      if (g) setTaskScope('group'); // Standard: Gruppen-Task wenn Gruppe vorhanden
+    });
   }, []);
 
-  // Echtzeit-Listener für Gruppenmitglieder
+  // Echtzeit-Listener für Gruppenmitglieder + Gruppendetails (Labels)
   useEffect(() => {
     if (!group) return;
-    const unsubscribe = subscribeToUsers(
+    const unsub1 = subscribeToUsers(
       (users) => setAllUsers(users),
-      () => {}, // Fehler still ignorieren — Picker ist optional
+      () => {},
       group.groupId,
     );
-    return () => unsubscribe();
+    const unsub2 = subscribeToGroup(
+      group.groupId,
+      (g) => setGroupDetail(g),
+      () => {},
+    );
+    return () => { unsub1(); unsub2(); };
   }, [group]);
 
+  // Echtzeit-Listener für User-Profil (persönliche Labels)
+  useEffect(() => {
+    if (!profile) return;
+    const unsub = subscribeToUserProfile(
+      profile.userId,
+      (p) => setUserDetail(p),
+      () => {},
+    );
+    return () => unsub();
+  }, [profile]);
+
+  // Verfügbare Labels je nach Scope
+  const availableLabels = taskScope === 'group' && groupDetail
+    ? (groupDetail.labels ?? [])
+    : (userDetail?.labels ?? []);
+
+  async function handleAddLabel() {
+    const trimmed = newLabelText.trim();
+    if (!trimmed || availableLabels.includes(trimmed)) {
+      setNewLabelText('');
+      return;
+    }
+    if (taskScope === 'group' && group) {
+      await addGroupLabel(group.groupId, trimmed);
+    } else if (profile) {
+      await addUserLabel(profile.userId, trimmed);
+    }
+    setLabels((prev) => new Set(prev).add(trimmed));
+    setNewLabelText('');
+  }
+
   const trimmedTitle = title.trim();
-  const canSave = trimmedTitle.length > 0 && !saving && profile !== null && group !== null;
+  const canSave = trimmedTitle.length > 0 && !saving && profile !== null;
 
   async function handleCreate() {
-    if (!canSave || !profile || !group) return;
+    if (!canSave || !profile) return;
 
     setSaving(true);
     setError(null);
 
     try {
-      const deadlineDate = deadlineDays != null
-        ? new Date(Date.now() + deadlineDays * 86400000)
-        : null;
       await createTask(
         {
           title: trimmedTitle,
           description: description.trim(),
-          groupId: group.groupId,
+          groupId: taskScope === 'group' && group ? group.groupId : null,
           priority,
           labels: [...labels],
           effortEstimate,
-          deadline: deadlineDate,
+          deadline,
           subtasks,
         },
         {
@@ -95,7 +137,7 @@ export default function CreateScreen() {
       setPriority(null);
       setLabels(new Set());
       setEffortEstimate(null);
-      setDeadlineDays(null);
+      setDeadline(null);
       setSubtasks([]);
       setSuggestions([]);
       setAddedSuggestions(new Set());
@@ -120,6 +162,28 @@ export default function CreateScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.screenTitle}>Neue Aufgabe</Text>
+
+        {/* Persönlich / Gruppe Toggle — nur wenn Gruppe vorhanden */}
+        {group && (
+          <View style={styles.scopeToggle}>
+            <TouchableOpacity
+              style={[styles.scopeButton, taskScope === 'personal' && styles.scopeButtonActive]}
+              onPress={() => { setTaskScope('personal'); setAssignedTo(null); setLabels(new Set()); }}
+            >
+              <Text style={[styles.scopeText, taskScope === 'personal' && styles.scopeTextActive]}>
+                Persönlich
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.scopeButton, taskScope === 'group' && styles.scopeButtonActive]}
+              onPress={() => { setTaskScope('group'); setLabels(new Set()); }}
+            >
+              <Text style={[styles.scopeText, taskScope === 'group' && styles.scopeTextActive]}>
+                Gruppe
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Titel */}
         <View style={styles.card}>
@@ -258,7 +322,7 @@ export default function CreateScreen() {
         <View style={styles.card}>
           <Text style={styles.label}>Labels</Text>
           <View style={styles.chipWrap}>
-            {['Uni', 'Arbeit', 'Privat', 'Dringend', 'Idee'].map((lbl) => {
+            {availableLabels.map((lbl) => {
               const isSelected = labels.has(lbl);
               return (
                 <TouchableOpacity
@@ -276,6 +340,28 @@ export default function CreateScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+          {/* Neues Label erstellen */}
+          <View style={styles.newLabelRow}>
+            <TextInput
+              style={styles.newLabelInput}
+              placeholder="Neues Label…"
+              placeholderTextColor={Colors.textTertiary}
+              value={newLabelText}
+              onChangeText={setNewLabelText}
+              maxLength={20}
+              returnKeyType="done"
+              onSubmitEditing={handleAddLabel}
+            />
+            <TouchableOpacity
+              style={[styles.newLabelButton, !newLabelText.trim() && styles.newLabelButtonDisabled]}
+              onPress={handleAddLabel}
+              disabled={!newLabelText.trim()}
+            >
+              <Text style={[styles.newLabelButtonText, !newLabelText.trim() && styles.newLabelButtonTextDisabled]}>
+                + Hinzufügen
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -307,72 +393,56 @@ export default function CreateScreen() {
         {/* Deadline */}
         <View style={styles.card}>
           <Text style={styles.label}>Deadline</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {([
-              { value: null, label: 'Keine' },
-              { value: 0, label: 'Heute' },
-              { value: 1, label: 'Morgen' },
-              { value: 3, label: 'In 3 Tagen' },
-              { value: 7, label: 'In 1 Woche' },
-            ] as const).map((opt) => (
-              <TouchableOpacity
-                key={opt.label}
-                style={[styles.metaChip, deadlineDays === opt.value && styles.metaChipSelected]}
-                onPress={() => setDeadlineDays(opt.value)}
-              >
-                <Text style={[styles.metaChipText, deadlineDays === opt.value && styles.metaChipTextSelected]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <DatePicker value={deadline} onChange={setDeadline} />
         </View>
 
-        {/* Zuweisen an (optional) */}
-        <View style={styles.card}>
-          <Text style={styles.label}>Zuweisen an (optional)</Text>
-          {(() => {
-            const otherUsers = allUsers.filter((u) => u.userId !== profile?.userId);
-            if (otherUsers.length === 0) {
-              return (
-                <Text style={styles.noUsersHint}>
-                  Noch keine anderen Nutzer verfügbar
-                </Text>
-              );
-            }
-            return (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.userChips}
-              >
-                <TouchableOpacity
-                  style={[styles.userChip, assignedTo === null && styles.userChipSelected]}
-                  onPress={() => setAssignedTo(null)}
-                >
-                  <Text style={[styles.userChipText, assignedTo === null && styles.userChipTextSelected]}>
-                    Niemand
+        {/* Zuweisen an — nur bei Gruppen-Tasks */}
+        {group && taskScope === 'group' && (
+          <View style={styles.card}>
+            <Text style={styles.label}>Zuweisen an (optional)</Text>
+            {(() => {
+              const otherUsers = allUsers.filter((u) => u.userId !== profile?.userId);
+              if (otherUsers.length === 0) {
+                return (
+                  <Text style={styles.noUsersHint}>
+                    Noch keine anderen Nutzer in der Gruppe
                   </Text>
-                </TouchableOpacity>
-                {otherUsers.map((user) => (
+                );
+              }
+              return (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.userChips}
+                >
                   <TouchableOpacity
-                    key={user.userId}
-                    style={[styles.userChip, assignedTo?.userId === user.userId && styles.userChipSelected]}
-                    onPress={() => setAssignedTo({
-                      userId: user.userId,
-                      displayName: user.displayName,
-                      emoji: user.emoji,
-                    })}
+                    style={[styles.userChip, assignedTo === null && styles.userChipSelected]}
+                    onPress={() => setAssignedTo(null)}
                   >
-                    <Text style={[styles.userChipText, assignedTo?.userId === user.userId && styles.userChipTextSelected]}>
-                      {user.displayName} {user.emoji}
+                    <Text style={[styles.userChipText, assignedTo === null && styles.userChipTextSelected]}>
+                      Niemand
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
-            );
-          })()}
-        </View>
+                  {otherUsers.map((user) => (
+                    <TouchableOpacity
+                      key={user.userId}
+                      style={[styles.userChip, assignedTo?.userId === user.userId && styles.userChipSelected]}
+                      onPress={() => setAssignedTo({
+                        userId: user.userId,
+                        displayName: user.displayName,
+                        emoji: user.emoji,
+                      })}
+                    >
+                      <Text style={[styles.userChipText, assignedTo?.userId === user.userId && styles.userChipTextSelected]}>
+                        {user.displayName} {user.emoji}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              );
+            })()}
+          </View>
+        )}
 
         {/* Ersteller-Info */}
         {profile && (
@@ -434,6 +504,32 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weightBold,
     color: Colors.textPrimary,
     marginBottom: Spacing.lg,
+  },
+  scopeToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.xs,
+    marginBottom: Spacing.md,
+    ...Shadows.sm,
+  },
+  scopeButton: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+  },
+  scopeButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  scopeText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textSecondary,
+  },
+  scopeTextActive: {
+    color: Colors.textOnPrimary,
+    fontWeight: Typography.weightSemiBold,
   },
   card: {
     backgroundColor: Colors.backgroundCard,
@@ -584,6 +680,40 @@ const styles = StyleSheet.create({
   },
   metaChipTextSelected: {
     color: Colors.textOnPrimary,
+  },
+  newLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  newLabelInput: {
+    flex: 1,
+    fontSize: Typography.sizeSM,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.separatorOpaque,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  newLabelButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  newLabelButtonDisabled: {
+    opacity: 0.4,
+  },
+  newLabelButtonText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.primary,
+  },
+  newLabelButtonTextDisabled: {
+    color: Colors.textTertiary,
   },
   noUsersHint: {
     fontSize: Typography.sizeSM,

@@ -13,6 +13,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   getDocs,
@@ -39,6 +40,7 @@ export interface Group {
   joinCode: string;
   createdBy: UserSnapshot;
   memberIds: string[];
+  labels: string[];
   createdAt: unknown; // Firestore Timestamp
   updatedAt: unknown;
 }
@@ -161,6 +163,28 @@ export async function leaveGroup(
 }
 
 /**
+ * Löscht eine Gruppe aus Firestore.
+ * Setzt bei allen Mitgliedern users/{userId}.groupId auf null.
+ * Tasks bleiben unberührt (behalten ihre groupId, sind aber verwaist).
+ *
+ * Nur der Ersteller sollte dies aufrufen (UI-Guard im Client).
+ */
+export async function deleteGroup(
+  groupId: string,
+  memberIds: string[],
+): Promise<void> {
+  // Alle Mitglieder aus der Gruppe entfernen
+  for (const userId of memberIds) {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, { groupId: null, updatedAt: serverTimestamp() });
+  }
+
+  // Gruppe löschen
+  const groupRef = doc(db, 'groups', groupId);
+  await deleteDoc(groupRef);
+}
+
+/**
  * Lädt eine Gruppe per groupId aus Firestore.
  */
 export async function getGroup(groupId: string): Promise<Group | null> {
@@ -182,6 +206,17 @@ export async function getGroupByJoinCode(joinCode: string): Promise<Group | null
   if (snapshot.empty) return null;
 
   return snapshot.docs[0].data() as Group;
+}
+
+/**
+ * Fügt ein neues Label zur Gruppe hinzu (idempotent dank arrayUnion).
+ */
+export async function addGroupLabel(groupId: string, label: string): Promise<void> {
+  const groupRef = doc(db, 'groups', groupId);
+  await updateDoc(groupRef, {
+    labels: arrayUnion(label),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /**

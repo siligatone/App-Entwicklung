@@ -18,8 +18,11 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTask, updateTask, toggleSubtask, generateId, type Task, type Priority, type Subtask } from '../../lib/task-service';
+import { subscribeToUserProfile, addUserLabel, type UserProfile } from '../../lib/user-service';
+import { subscribeToGroup, addGroupLabel, type Group } from '../../lib/group-service';
 import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
+import DatePicker from '../../components/DatePicker';
 
 /** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
 function toDate(timestamp: unknown): Date | null {
@@ -59,7 +62,8 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 function formatEffort(minutes: number | null | undefined): string | null {
   if (minutes == null) return null;
   if (minutes < 60) return `${minutes} Min`;
-  return `${minutes / 60}h`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${hours}h`;
 }
 
 function formatDeadlineDetail(timestamp: unknown): { text: string; overdue: boolean } | null {
@@ -93,7 +97,7 @@ export default function TaskDetailScreen() {
   const [editPriority, setEditPriority] = useState<Priority | null>(null);
   const [editLabels, setEditLabels] = useState<Set<string>>(new Set());
   const [editEffort, setEditEffort] = useState<number | null>(null);
-  const [editDeadlineDays, setEditDeadlineDays] = useState<number | null>(null);
+  const [editDeadline, setEditDeadline] = useState<Date | null>(null);
   const [editSubtasks, setEditSubtasks] = useState<Subtask[]>([]);
   const [saving, setSaving] = useState(false);
   const [togglingSubtaskIds, setTogglingSubtaskIds] = useState<Set<string>>(new Set());
@@ -102,14 +106,35 @@ export default function TaskDetailScreen() {
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
+  const [newLabelText, setNewLabelText] = useState('');
+  const [groupDetail, setGroupDetail] = useState<Group | null>(null);
+  const [userDetail, setUserDetail] = useState<UserProfile | null>(null);
+
+  const [cacheLoaded, setCacheLoaded] = useState(false);
 
   useEffect(() => {
-    getCachedProfile().then(setProfile);
-    getCachedGroup().then(setGroup);
+    Promise.all([getCachedProfile(), getCachedGroup()]).then(([p, g]) => {
+      setProfile(p);
+      setGroup(g);
+      setCacheLoaded(true);
+    });
   }, []);
 
+  // Labels: Echtzeit-Listener für Gruppe und User
   useEffect(() => {
-    if (!id || !group) return;
+    if (!group) return;
+    const unsub = subscribeToGroup(group.groupId, (g) => setGroupDetail(g), () => {});
+    return () => unsub();
+  }, [group]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const unsub = subscribeToUserProfile(profile.userId, (p) => setUserDetail(p), () => {});
+    return () => unsub();
+  }, [profile]);
+
+  useEffect(() => {
+    if (!id || !cacheLoaded || !profile) return;
 
     const unsubscribe = subscribeToTask(
       id,
@@ -117,9 +142,11 @@ export default function TaskDetailScreen() {
         if (t === null) {
           setError('Aufgabe nicht gefunden oder gelöscht.');
           setTask(null);
-        } else if (t.groupId != null && t.groupId !== group.groupId) {
-          // Task gehört zu einer anderen Gruppe
+        } else if (t.groupId != null && group && t.groupId !== group.groupId) {
           setError('Diese Aufgabe gehört nicht zu deiner Gruppe.');
+          setTask(null);
+        } else if (t.groupId != null && !group) {
+          setError('Diese Aufgabe gehört zu einer Gruppe.');
           setTask(null);
         } else {
           setTask(t);
@@ -134,7 +161,27 @@ export default function TaskDetailScreen() {
     );
 
     return () => unsubscribe();
-  }, [id, group]);
+  }, [id, cacheLoaded, profile, group]);
+
+  // Verfügbare Labels je nach Task-Scope
+  const availableLabels = task?.groupId && groupDetail
+    ? (groupDetail.labels ?? [])
+    : (userDetail?.labels ?? []);
+
+  async function handleAddLabel() {
+    const trimmed = newLabelText.trim();
+    if (!trimmed || availableLabels.includes(trimmed)) {
+      setNewLabelText('');
+      return;
+    }
+    if (task?.groupId && group) {
+      await addGroupLabel(group.groupId, trimmed);
+    } else if (profile) {
+      await addUserLabel(profile.userId, trimmed);
+    }
+    setEditLabels((prev) => new Set(prev).add(trimmed));
+    setNewLabelText('');
+  }
 
   function startEditing() {
     if (!task) return;
@@ -143,7 +190,7 @@ export default function TaskDetailScreen() {
     setEditPriority(task.priority ?? null);
     setEditLabels(new Set(task.labels ?? []));
     setEditEffort(task.effortEstimate ?? null);
-    setEditDeadlineDays(null); // Deadline wird per Chip neu gesetzt
+    setEditDeadline(toDate(task.deadline));
     setEditSubtasks(task.subtasks ?? []);
     setSaveError(null);
     setSuggestions([]);
@@ -165,24 +212,14 @@ export default function TaskDetailScreen() {
     setSaveError(null);
 
     try {
-      // Deadline: null = beibehalten, -1 = entfernen, 0+ = neues Datum
-      let deadlineDate: Date | null = null;
-      if (editDeadlineDays === -1) {
-        deadlineDate = null; // explizit entfernen
-      } else if (editDeadlineDays != null && editDeadlineDays >= 0) {
-        deadlineDate = new Date(Date.now() + editDeadlineDays * 86400000);
-      } else if (task.deadline) {
-        const existing = toDate(task.deadline);
-        deadlineDate = existing;
-      }
       await updateTask(task.id, {
         title: editTitle.trim(),
         description: editDescription.trim(),
-        groupId: task.groupId ?? group?.groupId ?? '',
+        groupId: task.groupId ?? group?.groupId ?? null,
         priority: editPriority,
         labels: [...editLabels],
         effortEstimate: editEffort,
-        deadline: deadlineDate,
+        deadline: editDeadline,
         subtasks: editSubtasks,
       });
       setEditing(false);
@@ -364,7 +401,7 @@ export default function TaskDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>Labels</Text>
           <View style={styles.chipWrap}>
-            {['Uni', 'Arbeit', 'Privat', 'Dringend', 'Idee'].map((lbl) => {
+            {availableLabels.map((lbl) => {
               const isSelected = editLabels.has(lbl);
               return (
                 <TouchableOpacity
@@ -382,6 +419,28 @@ export default function TaskDetailScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+          {/* Neues Label erstellen */}
+          <View style={styles.newLabelRow}>
+            <TextInput
+              style={styles.newLabelInput}
+              placeholder="Neues Label…"
+              placeholderTextColor={Colors.textTertiary}
+              value={newLabelText}
+              onChangeText={setNewLabelText}
+              maxLength={20}
+              returnKeyType="done"
+              onSubmitEditing={handleAddLabel}
+            />
+            <TouchableOpacity
+              style={[styles.newLabelButton, !newLabelText.trim() && styles.newLabelButtonDisabled]}
+              onPress={handleAddLabel}
+              disabled={!newLabelText.trim()}
+            >
+              <Text style={[styles.newLabelButtonText, !newLabelText.trim() && styles.newLabelButtonTextDisabled]}>
+                + Hinzufügen
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -413,31 +472,7 @@ export default function TaskDetailScreen() {
         {/* Deadline */}
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>Deadline</Text>
-          {!!task.deadline && editDeadlineDays === null && (
-            <Text style={styles.currentDeadlineHint}>
-              Aktuell: {formatDeadlineDetail(task.deadline)?.text ?? '–'}
-            </Text>
-          )}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {([
-              { value: null, label: 'Beibehalten' },
-              { value: -1, label: 'Keine' },
-              { value: 0, label: 'Heute' },
-              { value: 1, label: 'Morgen' },
-              { value: 3, label: 'In 3 Tagen' },
-              { value: 7, label: 'In 1 Woche' },
-            ] as const).map((opt) => (
-              <TouchableOpacity
-                key={opt.label}
-                style={[styles.metaChip, editDeadlineDays === opt.value && styles.metaChipSelected]}
-                onPress={() => setEditDeadlineDays(opt.value)}
-              >
-                <Text style={[styles.metaChipText, editDeadlineDays === opt.value && styles.metaChipTextSelected]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <DatePicker value={editDeadline} onChange={setEditDeadline} />
         </View>
 
         {saveError && (
@@ -807,6 +842,40 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.sm,
   },
+  newLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  newLabelInput: {
+    flex: 1,
+    fontSize: Typography.sizeSM,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.separatorOpaque,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  newLabelButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+  },
+  newLabelButtonDisabled: {
+    opacity: 0.4,
+  },
+  newLabelButtonText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.primary,
+  },
+  newLabelButtonTextDisabled: {
+    color: Colors.textTertiary,
+  },
   metaChip: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
@@ -828,11 +897,6 @@ const styles = StyleSheet.create({
   },
   metaChipTextSelected: {
     color: Colors.textOnPrimary,
-  },
-  currentDeadlineHint: {
-    fontSize: Typography.sizeXS,
-    color: Colors.textTertiary,
-    marginBottom: Spacing.sm,
   },
   // --- Subtasks Detail ---
   subtasksDetailCard: {

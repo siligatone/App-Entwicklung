@@ -68,7 +68,8 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 function formatEffort(minutes: number | null | undefined): string | null {
   if (minutes == null) return null;
   if (minutes < 60) return `${minutes} Min`;
-  return `${minutes / 60}h`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${hours}h`;
 }
 
 function formatDeadline(timestamp: unknown): { text: string; overdue: boolean } | null {
@@ -95,8 +96,15 @@ export default function TasksScreen() {
   const [error, setError] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<'all' | 'personal' | 'group'>('all');
 
   const sortedTasks = useMemo(() => sortTasks(tasks), [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    if (filter === 'personal') return sortedTasks.filter((t) => !t.groupId);
+    if (filter === 'group') return sortedTasks.filter((t) => !!t.groupId);
+    return sortedTasks;
+  }, [sortedTasks, filter]);
 
   // Profil und Gruppe laden
   useEffect(() => {
@@ -104,13 +112,21 @@ export default function TasksScreen() {
     getCachedGroup().then(setGroup);
   }, []);
 
-  // Echtzeit-Listener für Tasks (gefiltert nach aktiver Gruppe)
+  // Echtzeit-Listener für Tasks
+  // Mit Gruppe: persönliche + Gruppen-Tasks. Ohne Gruppe: nur persönliche.
   useEffect(() => {
-    if (!group) return;
+    if (!profile) return;
 
+    // Alle Tasks laden, client-seitig filtern (vermeidet zwei Subscriptions)
     const unsubscribe = subscribeToTasks(
       (newTasks) => {
-        setTasks(newTasks);
+        const filtered = group
+          ? newTasks.filter((t) =>
+              (t.groupId === group.groupId) ||
+              (!t.groupId && t.createdBy.userId === profile.userId),
+            )
+          : newTasks.filter((t) => !t.groupId && t.createdBy.userId === profile.userId);
+        setTasks(filtered);
         setLoading(false);
         setError(null);
       },
@@ -118,11 +134,10 @@ export default function TasksScreen() {
         setError(errorMsg);
         setLoading(false);
       },
-      group.groupId,
     );
 
     return () => unsubscribe();
-  }, [group]);
+  }, [group, profile]);
 
   /** Prüft ob der aktuelle Nutzer diese Aufgabe erledigen/wieder öffnen darf (Demo-UI-Guard). */
   function canToggle(task: Task): boolean {
@@ -210,18 +225,29 @@ export default function TasksScreen() {
       style={styles.scroll}
       contentContainerStyle={styles.container}
     >
-      {/* Header mit User-Info */}
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Aufgaben</Text>
-          {profile && (
-            <View style={styles.userBadge}>
-              <Text style={styles.userEmoji}>{profile.emoji}</Text>
-              <Text style={styles.userName}>{profile.displayName}</Text>
-            </View>
-          )}
+      {/* Header */}
+      <Text style={styles.headerTitle}>Aufgaben</Text>
+
+      {/* Filter-Tabs — nur mit Gruppe */}
+      {group && (
+        <View style={styles.filterRow}>
+          {([
+            { key: 'all' as const, label: 'Alle' },
+            { key: 'personal' as const, label: 'Persönlich' },
+            { key: 'group' as const, label: group.name },
+          ]).map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.filterTab, filter === tab.key && styles.filterTabActive]}
+              onPress={() => setFilter(tab.key)}
+            >
+              <Text style={[styles.filterTabText, filter === tab.key && styles.filterTabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      </View>
+      )}
 
       {/* Ladezustand */}
       {loading && (
@@ -239,18 +265,22 @@ export default function TasksScreen() {
       )}
 
       {/* Leerer Zustand */}
-      {!loading && !error && sortedTasks.length === 0 && (
+      {!loading && !error && filteredTasks.length === 0 && (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyEmoji}>📋</Text>
-          <Text style={styles.emptyTitle}>Noch keine Aufgaben</Text>
+          <Text style={styles.emptyTitle}>
+            {sortedTasks.length === 0 ? 'Noch keine Aufgaben' : 'Keine Aufgaben in diesem Bereich'}
+          </Text>
           <Text style={styles.emptySubtitle}>
-            Tippe auf + um die erste Aufgabe zu erstellen.
+            {sortedTasks.length === 0
+              ? 'Tippe auf + um die erste Aufgabe zu erstellen.'
+              : 'Wechsle den Filter oder erstelle eine neue Aufgabe.'}
           </Text>
         </View>
       )}
 
       {/* Task-Liste */}
-      {!loading && sortedTasks.map((task) => {
+      {!loading && filteredTasks.map((task) => {
         const isToggling = togglingIds.has(task.id);
 
         return (
@@ -305,6 +335,21 @@ export default function TasksScreen() {
                     </Text>
                     <Text style={styles.detailsHint}>Details ansehen</Text>
                   </>
+                )}
+
+                {/* Scope-Badge — nur in "Alle"-Ansicht */}
+                {filter === 'all' && group && (
+                  <View style={[
+                    styles.scopeBadge,
+                    task.groupId ? styles.scopeBadgeGroup : styles.scopeBadgePersonal,
+                  ]}>
+                    <Text style={[
+                      styles.scopeBadgeText,
+                      task.groupId ? styles.scopeBadgeTextGroup : styles.scopeBadgeTextPersonal,
+                    ]}>
+                      {task.groupId ? group.name : 'Persönlich'}
+                    </Text>
+                  </View>
                 )}
 
                 {task.assignedTo && (
@@ -419,41 +464,39 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   // --- Header ---
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
-    marginTop: Spacing.sm,
-  },
-  headerLeft: {
-    flex: 1,
-    marginRight: Spacing.md,
-  },
   headerTitle: {
     fontSize: Typography.sizeXXL,
     fontWeight: Typography.weightBold,
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.lg,
+    marginTop: Spacing.sm,
   },
-  userBadge: {
+  // --- Filter ---
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.backgroundCard,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    alignSelf: 'flex-start',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.xs,
+    marginBottom: Spacing.md,
     ...Shadows.sm,
   },
-  userEmoji: {
-    fontSize: 18,
-    marginRight: Spacing.xs,
+  filterTab: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
   },
-  userName: {
+  filterTabActive: {
+    backgroundColor: Colors.primary,
+  },
+  filterTabText: {
     fontSize: Typography.sizeSM,
     fontWeight: Typography.weightMedium,
     color: Colors.textSecondary,
+  },
+  filterTabTextActive: {
+    color: Colors.textOnPrimary,
+    fontWeight: Typography.weightSemiBold,
   },
   // --- Zustände ---
   centerBox: {
@@ -569,6 +612,29 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: Typography.weightMedium,
     marginTop: 2,
+  },
+  scopeBadge: {
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
+  },
+  scopeBadgePersonal: {
+    backgroundColor: Colors.warning + '18',
+  },
+  scopeBadgeGroup: {
+    backgroundColor: Colors.primary + '15',
+  },
+  scopeBadgeText: {
+    fontSize: Typography.sizeXS,
+    fontWeight: Typography.weightMedium,
+  },
+  scopeBadgeTextPersonal: {
+    color: Colors.warning,
+  },
+  scopeBadgeTextGroup: {
+    color: Colors.primary,
   },
   assignedBadge: {
     flexDirection: 'row',

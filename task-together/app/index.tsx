@@ -5,7 +5,7 @@
  * 1. Existiert eine lokale userId in AsyncStorage?
  * 2. Existiert ein Firestore-Profil für diese userId?
  *
- * Wenn beides ja → /tasks
+ * Wenn beides ja → /(tabs) (Gruppe optional)
  * Wenn userId fehlt oder Firestore-Profil fehlt → /onboarding
  */
 
@@ -51,50 +51,38 @@ export default function Index() {
         }
       }
 
-      // 3. Gruppe vorhanden?
+      // 3. Gruppe optional — Cache wiederherstellen falls vorhanden
       const cachedGroup = await getCachedGroup();
       if (cachedGroup) {
-        // Prüfe ob die Gruppe in Firestore noch existiert
         try {
           const firestoreGroup = await getGroup(cachedGroup.groupId);
-          if (firestoreGroup) {
-            router.replace('/(tabs)');
-          } else {
-            // Gruppe existiert nicht mehr — Cache löschen
+          if (!firestoreGroup) {
             await clearGroupCache();
-            router.replace('/group-setup');
           }
         } catch {
-          // Netzwerkfehler — mit Cache weiterarbeiten
-          router.replace('/(tabs)');
+          // Netzwerkfehler — Cache behalten
         }
-        return;
+      } else {
+        // Kein Cache — prüfe ob Firestore-Profil eine groupId hat
+        try {
+          const firestoreProfile = await getUserProfile(profile.userId);
+          if (firestoreProfile?.groupId) {
+            const group = await getGroup(firestoreProfile.groupId);
+            if (group) {
+              await cacheGroup({
+                groupId: group.groupId,
+                name: group.name,
+                joinCode: group.joinCode,
+              });
+            }
+          }
+        } catch {
+          // Netzwerkfehler — weiter ohne Gruppe
+        }
       }
 
-      // Kein Gruppen-Cache — prüfe ob Firestore-Profil eine groupId hat
-      try {
-        const firestoreProfile = await getUserProfile(userId);
-        if (firestoreProfile?.groupId) {
-          const group = await getGroup(firestoreProfile.groupId);
-          if (group) {
-            await cacheGroup({
-              groupId: group.groupId,
-              name: group.name,
-              joinCode: group.joinCode,
-            });
-            router.replace('/(tabs)');
-          } else {
-            // groupId zeigt auf nicht-existierende Gruppe
-            await clearGroupCache();
-            router.replace('/group-setup');
-          }
-        } else {
-          router.replace('/group-setup');
-        }
-      } catch {
-        // Netzwerkfehler ohne Cache → group-setup
-        router.replace('/group-setup');
-      }
+      // Immer zu /(tabs) — Gruppe ist optional
+      router.replace('/(tabs)');
     }
     redirect();
   }, []);

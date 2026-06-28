@@ -67,7 +67,7 @@ export interface Task {
 export interface CreateTaskInput {
   title: string;
   description: string;
-  groupId: string;
+  groupId?: string | null;
   priority?: Priority | null;
   labels?: string[];
   effortEstimate?: number | null;
@@ -90,7 +90,7 @@ export async function createTask(
     title: input.title,
     description: input.description,
     done: false,
-    groupId: input.groupId,
+    groupId: input.groupId ?? null,
     createdBy: {
       userId: currentUser.userId,
       displayName: currentUser.displayName,

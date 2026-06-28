@@ -1,9 +1,10 @@
 /**
- * Kalender-Tab — Agenda-Ansicht für Aufgaben mit Deadlines.
+ * Kalender-Tab — Monatsansicht mit Tagesdetails.
  *
- * Zeigt Aufgaben gruppiert nach Zeitabschnitt:
- * Überfällig, Heute, Morgen, Diese Woche, Später.
- * Nur Aufgaben der aktiven Gruppe. Keine externe Kalenderintegration.
+ * Oben: Monatsnavigation mit Vor/Zurück und Heute-Button.
+ * Mitte: 7-Spalten-Grid (Mo–So), Tage mit Deadlines bekommen Punkt.
+ * Unten: Aufgaben des ausgewählten Tages + überfällige Aufgaben.
+ * Nur Aufgaben der aktiven Gruppe (oder persönliche ohne Gruppe).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -16,18 +17,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCachedGroup, type CachedGroup } from '../../lib/storage';
+import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, type Task } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
-
-type FilterMode = 'open' | 'all';
-
-interface AgendaSection {
-  key: string;
-  title: string;
-  color: string;
-  tasks: Task[];
-}
 
 // --- Hilfsfunktionen ---
 
@@ -44,13 +36,12 @@ function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function formatDeadlineDate(date: Date): string {
-  return date.toLocaleDateString('de-DE', {
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
-  });
-}
+const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+const MONTH_NAMES = [
+  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+];
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   low: { label: 'Niedrig', color: Colors.success },
@@ -58,32 +49,68 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high: { label: 'Hoch', color: Colors.danger },
 };
 
-function formatEffort(minutes: number | null | undefined): string | null {
-  if (minutes == null) return null;
-  if (minutes < 60) return `${minutes} Min`;
-  return `${minutes / 60}h`;
+/** Erzeugt die Tageszellen für ein Monatsgrid (inkl. leerer Zellen am Anfang). */
+function getMonthGrid(year: number, month: number): (number | null)[] {
+  const firstDay = new Date(year, month, 1);
+  // Montag = 0, Sonntag = 6 (JS: Sonntag = 0, Montag = 1)
+  const startWeekday = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  return cells;
+}
+
+/** Set von Tages-Strings (YYYY-MM-DD) die Deadlines haben. */
+function getDeadlineDays(tasks: Task[]): Set<string> {
+  const days = new Set<string>();
+  for (const t of tasks) {
+    const d = toDate(t.deadline);
+    if (d) {
+      days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    }
+  }
+  return days;
+}
+
+function dayKey(year: number, month: number, day: number): string {
+  return `${year}-${month}-${day}`;
 }
 
 // --- Komponente ---
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [group, setGroup] = useState<CachedGroup | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterMode>('open');
+
+  const now = new Date();
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const [selectedDay, setSelectedDay] = useState(now.getDate());
 
   useEffect(() => {
+    getCachedProfile().then(setProfile);
     getCachedGroup().then(setGroup);
   }, []);
 
+  // Echtzeit-Listener: mit Gruppe → persönliche + Gruppen-Tasks. Ohne → nur persönliche.
   useEffect(() => {
-    if (!group) return;
+    if (!profile) return;
 
     const unsubscribe = subscribeToTasks(
       (newTasks) => {
-        setTasks(newTasks);
+        const filtered = group
+          ? newTasks.filter((t) =>
+              (t.groupId === group.groupId) ||
+              (!t.groupId && t.createdBy.userId === profile.userId),
+            )
+          : newTasks.filter((t) => !t.groupId && t.createdBy.userId === profile.userId);
+        setTasks(filtered);
         setLoading(false);
         setError(null);
       },
@@ -91,79 +118,74 @@ export default function CalendarScreen() {
         setError(errorMsg);
         setLoading(false);
       },
-      group.groupId,
     );
     return () => unsubscribe();
-  }, [group]);
+  }, [group, profile]);
 
-  const sections = useMemo((): AgendaSection[] => {
-    const now = new Date();
-    const today = startOfDay(now);
-    const tomorrow = new Date(today.getTime() + 86400000);
-    const endOfWeek = new Date(today.getTime() + 7 * 86400000);
+  // Kalender-Daten
+  const grid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
+  const deadlineDays = useMemo(() => getDeadlineDays(tasks), [tasks]);
 
-    // Nur Tasks mit Deadline
-    let deadlineTasks = tasks.filter((t) => toDate(t.deadline) !== null);
+  const today = startOfDay(new Date());
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth();
+  const todayDay = today.getDate();
 
-    // Filter: nur offene oder alle
-    if (filter === 'open') {
-      deadlineTasks = deadlineTasks.filter((t) => !t.done);
-    }
+  // Aufgaben für den ausgewählten Tag
+  const selectedDate = useMemo(() => new Date(viewYear, viewMonth, selectedDay), [viewYear, viewMonth, selectedDay]);
+  const selectedDayStart = startOfDay(selectedDate).getTime();
 
-    // Nach Deadline sortieren
-    deadlineTasks.sort((a, b) => {
-      const dateA = toDate(a.deadline)!.getTime();
-      const dateB = toDate(b.deadline)!.getTime();
-      return dateA - dateB;
+  const tasksForSelectedDay = useMemo(() => {
+    return tasks.filter((t) => {
+      const d = toDate(t.deadline);
+      if (!d) return false;
+      return startOfDay(d).getTime() === selectedDayStart;
+    }).sort((a, b) => {
+      // Offene zuerst, dann nach Titel
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return a.title.localeCompare(b.title);
     });
+  }, [tasks, selectedDayStart]);
 
-    const overdue: Task[] = [];
-    const todayTasks: Task[] = [];
-    const tomorrowTasks: Task[] = [];
-    const thisWeek: Task[] = [];
-    const later: Task[] = [];
+  // Überfällige offene Aufgaben
+  const overdueTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (t.done) return false;
+      const d = toDate(t.deadline);
+      if (!d) return false;
+      return startOfDay(d).getTime() < today.getTime();
+    }).sort((a, b) => {
+      const da = toDate(a.deadline)!.getTime();
+      const db = toDate(b.deadline)!.getTime();
+      return da - db;
+    });
+  }, [tasks, today]);
 
-    for (const task of deadlineTasks) {
-      const deadline = startOfDay(toDate(task.deadline)!);
-
-      if (deadline.getTime() < today.getTime() && !task.done) {
-        overdue.push(task);
-      } else if (deadline.getTime() === today.getTime()) {
-        todayTasks.push(task);
-      } else if (deadline.getTime() === tomorrow.getTime()) {
-        tomorrowTasks.push(task);
-      } else if (deadline.getTime() < endOfWeek.getTime()) {
-        thisWeek.push(task);
-      } else {
-        later.push(task);
-      }
-
-      // Erledigte überfällige Tasks → "Heute" statt "Überfällig"
-      if (deadline.getTime() < today.getTime() && task.done) {
-        todayTasks.push(task);
-      }
+  function goToPrevMonth() {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
     }
+    setSelectedDay(1);
+  }
 
-    const result: AgendaSection[] = [];
+  function goToNextMonth() {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+    setSelectedDay(1);
+  }
 
-    if (overdue.length > 0) {
-      result.push({ key: 'overdue', title: 'Überfällig', color: Colors.danger, tasks: overdue });
-    }
-    if (todayTasks.length > 0) {
-      result.push({ key: 'today', title: 'Heute', color: Colors.primary, tasks: todayTasks });
-    }
-    if (tomorrowTasks.length > 0) {
-      result.push({ key: 'tomorrow', title: 'Morgen', color: Colors.warning, tasks: tomorrowTasks });
-    }
-    if (thisWeek.length > 0) {
-      result.push({ key: 'week', title: 'Diese Woche', color: Colors.success, tasks: thisWeek });
-    }
-    if (later.length > 0) {
-      result.push({ key: 'later', title: 'Später', color: Colors.textTertiary, tasks: later });
-    }
-
-    return result;
-  }, [tasks, filter]);
+  function goToToday() {
+    setViewYear(todayYear);
+    setViewMonth(todayMonth);
+    setSelectedDay(todayDay);
+  }
 
   if (loading) {
     return (
@@ -183,133 +205,193 @@ export default function CalendarScreen() {
     );
   }
 
+  const isCurrentMonth = viewYear === todayYear && viewMonth === todayMonth;
+
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      <Text style={styles.screenTitle}>Kalender</Text>
-
-      {/* Filter-Toggle */}
-      <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'open' && styles.filterActive]}
-          onPress={() => setFilter('open')}
-        >
-          <Text style={[styles.filterText, filter === 'open' && styles.filterTextActive]}>
-            Offen
-          </Text>
+      {/* Monatsnavigation */}
+      <View style={styles.navRow}>
+        <TouchableOpacity style={styles.navButton} onPress={goToPrevMonth}>
+          <Text style={styles.navButtonText}>‹</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'all' && styles.filterActive]}
-          onPress={() => setFilter('all')}
-        >
-          <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
-            Alle
-          </Text>
+
+        <Text style={styles.monthTitle}>
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </Text>
+
+        <TouchableOpacity style={styles.navButton} onPress={goToNextMonth}>
+          <Text style={styles.navButtonText}>›</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Leerer Zustand */}
-      {sections.length === 0 && (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyEmoji}>📅</Text>
-          <Text style={styles.emptyTitle}>Keine Deadlines geplant</Text>
-          <Text style={styles.emptySubtitle}>
-            Lege bei einer Aufgabe eine Deadline fest, damit sie hier erscheint.
-          </Text>
-        </View>
+      {/* Heute-Button */}
+      {!isCurrentMonth && (
+        <TouchableOpacity style={styles.todayButton} onPress={goToToday}>
+          <Text style={styles.todayButtonText}>Heute</Text>
+        </TouchableOpacity>
       )}
 
-      {/* Agenda-Abschnitte */}
-      {sections.map((section) => (
-        <View key={section.key} style={styles.section}>
-          {/* Section Header */}
-          <View style={styles.sectionHeader}>
-            <View style={[styles.sectionDot, { backgroundColor: section.color }]} />
-            <Text style={[styles.sectionTitle, { color: section.color }]}>
-              {section.title}
-            </Text>
-            <Text style={styles.sectionCount}>{section.tasks.length}</Text>
+      {/* Wochentags-Header */}
+      <View style={styles.weekdayRow}>
+        {WEEKDAY_LABELS.map((label) => (
+          <View key={label} style={styles.weekdayCell}>
+            <Text style={styles.weekdayText}>{label}</Text>
           </View>
+        ))}
+      </View>
 
-          {/* Tasks in Section */}
-          {section.tasks.map((task) => {
-            const deadlineDate = toDate(task.deadline);
+      {/* Monatsgrid */}
+      <View style={styles.gridContainer}>
+        {grid.map((day, index) => {
+          if (day === null) {
+            return <View key={`empty-${index}`} style={styles.dayCell} />;
+          }
 
-            return (
-              <TouchableOpacity
-                key={task.id}
-                style={[styles.taskCard, task.done && styles.taskCardDone]}
-                onPress={() => router.push(`/task/${task.id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.taskHeader}>
-                  {/* Status-Kreis */}
-                  {task.done ? (
-                    <View style={styles.checkDone}>
-                      <Text style={styles.checkMark}>✓</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.checkOpen} />
-                  )}
+          const isToday = viewYear === todayYear && viewMonth === todayMonth && day === todayDay;
+          const isSelected = day === selectedDay;
+          const hasDeadline = deadlineDays.has(dayKey(viewYear, viewMonth, day));
 
-                  <View style={styles.taskContent}>
-                    <Text
-                      style={[styles.taskTitle, task.done && styles.taskTitleDone]}
-                      numberOfLines={2}
-                    >
-                      {task.title}
-                    </Text>
+          return (
+            <TouchableOpacity
+              key={`day-${day}`}
+              style={[
+                styles.dayCell,
+                isToday && !isSelected && styles.dayCellToday,
+                isSelected && !isToday && styles.dayCellSelected,
+                isSelected && isToday && styles.dayCellTodaySelected,
+              ]}
+              onPress={() => setSelectedDay(day)}
+              activeOpacity={0.6}
+            >
+              <Text style={[
+                styles.dayText,
+                isToday && !isSelected && styles.dayTextToday,
+                isSelected && styles.dayTextSelected,
+              ]}>
+                {day}
+              </Text>
+              {hasDeadline && (
+                <View style={[
+                  styles.deadlineDot,
+                  isSelected && styles.deadlineDotSelected,
+                ]} />
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
-                    {/* Deadline-Datum */}
-                    {deadlineDate && (
-                      <Text style={[
-                        styles.taskDeadline,
-                        section.key === 'overdue' && styles.taskDeadlineOverdue,
-                      ]}>
-                        {formatDeadlineDate(deadlineDate)}
+      {/* Aufgaben für ausgewählten Tag */}
+      <View style={styles.dayDetailSection}>
+        <Text style={styles.dayDetailTitle}>
+          {selectedDay}. {MONTH_NAMES[viewMonth]} {viewYear}
+        </Text>
+
+        {tasksForSelectedDay.length === 0 ? (
+          <Text style={styles.noTasksText}>Keine Aufgaben an diesem Tag</Text>
+        ) : (
+          tasksForSelectedDay.map((task) => (
+            <TouchableOpacity
+              key={task.id}
+              style={[styles.taskCard, task.done && styles.taskCardDone]}
+              onPress={() => router.push(`/task/${task.id}`)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.taskRow}>
+                {task.done ? (
+                  <View style={styles.checkDone}>
+                    <Text style={styles.checkMark}>✓</Text>
+                  </View>
+                ) : (
+                  <View style={styles.checkOpen} />
+                )}
+                <View style={styles.taskContent}>
+                  <Text
+                    style={[styles.taskTitle, task.done && styles.taskTitleDone]}
+                    numberOfLines={2}
+                  >
+                    {task.title}
+                  </Text>
+                  {/* Badges */}
+                  <View style={styles.badgeRow}>
+                    {/* Scope-Badge */}
+                    <View style={[styles.badge, {
+                      backgroundColor: task.groupId ? Colors.primary + '15' : Colors.warning + '18',
+                    }]}>
+                      <Text style={[styles.badgeText, {
+                        color: task.groupId ? Colors.primary : Colors.warning,
+                      }]}>
+                        {task.groupId && group ? group.name : 'Persönlich'}
                       </Text>
+                    </View>
+                    {task.priority && PRIORITY_CONFIG[task.priority] && (
+                      <View style={[styles.badge, { backgroundColor: PRIORITY_CONFIG[task.priority].color + '18' }]}>
+                        <Text style={[styles.badgeText, { color: PRIORITY_CONFIG[task.priority].color }]}>
+                          {PRIORITY_CONFIG[task.priority].label}
+                        </Text>
+                      </View>
+                    )}
+                    {task.assignedTo && (
+                      <View style={[styles.badge, { backgroundColor: Colors.primaryLight + '20' }]}>
+                        <Text style={[styles.badgeText, { color: Colors.primary }]}>
+                          {task.assignedTo.displayName} {task.assignedTo.emoji}
+                        </Text>
+                      </View>
                     )}
                   </View>
                 </View>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+      </View>
 
-                {/* Badges */}
-                <View style={styles.badgeRow}>
-                  {task.priority && PRIORITY_CONFIG[task.priority] && (
-                    <View style={[styles.badge, { backgroundColor: PRIORITY_CONFIG[task.priority].color + '18' }]}>
-                      <Text style={[styles.badgeText, { color: PRIORITY_CONFIG[task.priority].color }]}>
-                        {PRIORITY_CONFIG[task.priority].label}
-                      </Text>
+      {/* Überfällige Aufgaben */}
+      {overdueTasks.length > 0 && (
+        <View style={styles.overdueSection}>
+          <View style={styles.overdueHeader}>
+            <View style={styles.overdueDot} />
+            <Text style={styles.overdueTitle}>Überfällig</Text>
+            <Text style={styles.overdueCount}>{overdueTasks.length}</Text>
+          </View>
+          {overdueTasks.map((task) => {
+            const deadlineDate = toDate(task.deadline);
+            return (
+              <TouchableOpacity
+                key={task.id}
+                style={styles.taskCard}
+                onPress={() => router.push(`/task/${task.id}`)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.taskRow}>
+                  <View style={styles.checkOpen} />
+                  <View style={styles.taskContent}>
+                    <Text style={styles.taskTitle} numberOfLines={2}>
+                      {task.title}
+                    </Text>
+                    <View style={styles.badgeRow}>
+                      <View style={[styles.badge, {
+                        backgroundColor: task.groupId ? Colors.primary + '15' : Colors.warning + '18',
+                      }]}>
+                        <Text style={[styles.badgeText, {
+                          color: task.groupId ? Colors.primary : Colors.warning,
+                        }]}>
+                          {task.groupId && group ? group.name : 'Persönlich'}
+                        </Text>
+                      </View>
                     </View>
-                  )}
-
-                  {formatEffort(task.effortEstimate) && (
-                    <View style={[styles.badge, { backgroundColor: Colors.textTertiary + '18' }]}>
-                      <Text style={[styles.badgeText, { color: Colors.textSecondary }]}>
-                        ⏱ {formatEffort(task.effortEstimate)}
+                    {deadlineDate && (
+                      <Text style={styles.overdueDate}>
+                        Fällig: {deadlineDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
                       </Text>
-                    </View>
-                  )}
-
-                  {(task.subtasks ?? []).length > 0 && (
-                    <View style={[styles.badge, { backgroundColor: Colors.primary + '15' }]}>
-                      <Text style={[styles.badgeText, { color: Colors.primary }]}>
-                        {(task.subtasks ?? []).filter((s) => s.done).length}/{(task.subtasks ?? []).length}
-                      </Text>
-                    </View>
-                  )}
-
-                  {task.assignedTo && (
-                    <View style={[styles.badge, { backgroundColor: Colors.primaryLight + '20' }]}>
-                      <Text style={[styles.badgeText, { color: Colors.primary }]}>
-                        {task.assignedTo.displayName} {task.assignedTo.emoji}
-                      </Text>
-                    </View>
-                  )}
+                    )}
+                  </View>
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
-      ))}
+      )}
     </ScrollView>
   );
 }
@@ -345,85 +427,131 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     paddingBottom: Spacing.xxl,
   },
-  screenTitle: {
-    fontSize: Typography.sizeXXL,
+  // --- Monatsnavigation ---
+  navRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  navButton: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.backgroundCard,
+    ...Shadows.sm,
+  },
+  navButtonText: {
+    fontSize: 24,
+    color: Colors.primary,
+    fontWeight: Typography.weightSemiBold,
+  },
+  monthTitle: {
+    fontSize: Typography.sizeXL,
     fontWeight: Typography.weightBold,
     color: Colors.textPrimary,
-    marginBottom: Spacing.md,
-    marginTop: Spacing.sm,
   },
-  // --- Filter ---
-  filterRow: {
+  todayButton: {
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    marginBottom: Spacing.sm,
+  },
+  todayButtonText: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.primary,
+  },
+  // --- Wochentags-Header ---
+  weekdayRow: {
     flexDirection: 'row',
+    marginBottom: Spacing.xs,
+  },
+  weekdayCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  weekdayText: {
+    fontSize: Typography.sizeXS,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.textTertiary,
+  },
+  // --- Monatsgrid ---
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     backgroundColor: Colors.backgroundCard,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.xs,
     marginBottom: Spacing.lg,
     ...Shadows.sm,
   },
-  filterButton: {
-    flex: 1,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
+  dayCell: {
+    width: '14.28%',
+    aspectRatio: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
-  filterActive: {
+  dayCellToday: {
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.success + '18',
+    borderWidth: 2,
+    borderColor: Colors.success,
+  },
+  dayCellSelected: {
+    borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary,
   },
-  filterText: {
+  dayCellTodaySelected: {
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.success,
+  },
+  dayText: {
     fontSize: Typography.sizeSM,
     fontWeight: Typography.weightMedium,
-    color: Colors.textSecondary,
+    color: Colors.textPrimary,
   },
-  filterTextActive: {
+  dayTextToday: {
+    color: Colors.success,
+    fontWeight: Typography.weightBold,
+  },
+  dayTextSelected: {
     color: Colors.textOnPrimary,
-    fontWeight: Typography.weightSemiBold,
+    fontWeight: Typography.weightBold,
   },
-  // --- Empty State ---
-  emptyBox: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xxl,
+  deadlineDot: {
+    position: 'absolute',
+    bottom: 4,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: Colors.primary,
   },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: Spacing.md,
+  deadlineDotSelected: {
+    backgroundColor: Colors.textOnPrimary,
   },
-  emptyTitle: {
-    fontSize: Typography.sizeLG,
-    fontWeight: Typography.weightSemiBold,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xs,
-  },
-  emptySubtitle: {
-    fontSize: Typography.sizeSM,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  // --- Sections ---
-  section: {
+  // --- Tages-Detail ---
+  dayDetailSection: {
     marginBottom: Spacing.lg,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  dayDetailTitle: {
+    fontSize: Typography.sizeLG,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.textPrimary,
     marginBottom: Spacing.sm,
   },
-  sectionDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: Spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: Typography.sizeMD,
-    fontWeight: Typography.weightSemiBold,
-    flex: 1,
-  },
-  sectionCount: {
+  noTasksText: {
     fontSize: Typography.sizeSM,
-    fontWeight: Typography.weightMedium,
     color: Colors.textTertiary,
+    fontStyle: 'italic',
+    paddingVertical: Spacing.md,
   },
   // --- Task Cards ---
   taskCard: {
@@ -436,7 +564,7 @@ const styles = StyleSheet.create({
   taskCardDone: {
     opacity: 0.6,
   },
-  taskHeader: {
+  taskRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
@@ -477,22 +605,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: Colors.textTertiary,
   },
-  taskDeadline: {
-    fontSize: Typography.sizeXS,
-    color: Colors.textTertiary,
-    marginTop: 2,
-  },
-  taskDeadlineOverdue: {
-    color: Colors.danger,
-    fontWeight: Typography.weightMedium,
-  },
-  // --- Badges ---
   badgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.xs,
-    marginTop: Spacing.sm,
-    paddingLeft: 30, // Einrückung unter Checkbox
+    marginTop: Spacing.xs,
   },
   badge: {
     borderRadius: BorderRadius.full,
@@ -502,5 +619,38 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: Typography.sizeXS,
     fontWeight: Typography.weightMedium,
+  },
+  // --- Überfällig ---
+  overdueSection: {
+    marginBottom: Spacing.lg,
+  },
+  overdueHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  overdueDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.danger,
+    marginRight: Spacing.sm,
+  },
+  overdueTitle: {
+    fontSize: Typography.sizeMD,
+    fontWeight: Typography.weightSemiBold,
+    color: Colors.danger,
+    flex: 1,
+  },
+  overdueCount: {
+    fontSize: Typography.sizeSM,
+    fontWeight: Typography.weightMedium,
+    color: Colors.textTertiary,
+  },
+  overdueDate: {
+    fontSize: Typography.sizeXS,
+    color: Colors.danger,
+    fontWeight: Typography.weightMedium,
+    marginTop: 2,
   },
 });

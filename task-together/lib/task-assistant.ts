@@ -120,6 +120,229 @@ export function suggestSubtasks(title: string): string[] {
   return fallbackSuggestions;
 }
 
+// --- Typen für KI-Priorisierung ---
+
+export interface PriorityInputTask {
+  taskId: string;
+  title: string;
+  description: string;
+  deadline: string | null;      // ISO-Datum oder null
+  priority: string | null;      // 'low' | 'medium' | 'high' | null
+  effortEstimate: number | null; // Minuten
+  assignedTo: string | null;    // displayName oder null
+  subtaskProgress: string | null; // z. B. "2/5"
+}
+
+export interface PrioritySuggestion {
+  taskId: string;
+  rank: number;
+  reason: string;
+}
+
+export interface PrioritySuggestionResult {
+  suggestions: PrioritySuggestion[];
+  source: 'ai' | 'local';
+}
+
+/**
+ * Lokaler Fallback-Priorisierungsalgorithmus.
+ * Sortiert offene Aufgaben nach:
+ * 1. Überfällig (Deadline < heute)
+ * 2. Deadline heute/morgen
+ * 3. Hohe Priorität
+ * 4. Niedriger Aufwand (schnelle Wins)
+ * 5. Mehr offene Subtasks
+ */
+export function prioritizeTasksLocally(tasks: PriorityInputTask[]): PrioritySuggestion[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  function getScore(task: PriorityInputTask): number {
+    let score = 0;
+
+    // Deadline-Dringlichkeit (höchste Gewichtung)
+    if (task.deadline) {
+      const dl = new Date(task.deadline);
+      const dlDay = new Date(dl.getFullYear(), dl.getMonth(), dl.getDate());
+      const diffDays = Math.round((dlDay.getTime() - today.getTime()) / 86400000);
+      if (diffDays < 0) score += 1000;        // Überfällig
+      else if (diffDays === 0) score += 800;   // Heute
+      else if (diffDays === 1) score += 600;   // Morgen
+      else if (diffDays <= 3) score += 400;    // Nächste 3 Tage
+      else if (diffDays <= 7) score += 200;    // Diese Woche
+    }
+
+    // Priorität
+    if (task.priority === 'high') score += 150;
+    else if (task.priority === 'medium') score += 80;
+    else if (task.priority === 'low') score += 20;
+
+    // Niedriger Aufwand bevorzugen (schnelle Wins)
+    if (task.effortEstimate != null) {
+      if (task.effortEstimate <= 15) score += 50;
+      else if (task.effortEstimate <= 30) score += 30;
+      else if (task.effortEstimate <= 60) score += 10;
+    }
+
+    // Mehr offene Subtasks → höher
+    if (task.subtaskProgress) {
+      const match = task.subtaskProgress.match(/(\d+)\/(\d+)/);
+      if (match) {
+        const done = parseInt(match[1], 10);
+        const total = parseInt(match[2], 10);
+        const remaining = total - done;
+        if (remaining > 0) score += remaining * 5;
+      }
+    }
+
+    return score;
+  }
+
+  function getReason(task: PriorityInputTask): string {
+    const reasons: string[] = [];
+
+    if (task.deadline) {
+      const dl = new Date(task.deadline);
+      const dlDay = new Date(dl.getFullYear(), dl.getMonth(), dl.getDate());
+      const diffDays = Math.round((dlDay.getTime() - today.getTime()) / 86400000);
+      if (diffDays < 0) reasons.push('Überfällig');
+      else if (diffDays === 0) reasons.push('Heute fällig');
+      else if (diffDays === 1) reasons.push('Morgen fällig');
+      else if (diffDays <= 7) reasons.push('Diese Woche fällig');
+    }
+
+    if (task.priority === 'high') reasons.push('Hohe Priorität');
+    else if (task.priority === 'medium') reasons.push('Mittlere Priorität');
+
+    if (task.effortEstimate != null && task.effortEstimate <= 30) {
+      reasons.push('Schnell erledigt');
+    }
+
+    if (reasons.length === 0) reasons.push('Empfohlen');
+
+    return reasons.join(', ');
+  }
+
+  return tasks
+    .map((t) => ({ task: t, score: getScore(t) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10)
+    .map((item, index) => ({
+      taskId: item.task.taskId,
+      rank: index + 1,
+      reason: getReason(item.task),
+    }));
+}
+
+/**
+ * Schlägt eine Bearbeitungsreihenfolge für offene Aufgaben vor.
+ * Nutzt Gemini KI wenn verfügbar, sonst lokalen Fallback.
+ *
+ * DEMO-HINWEIS: Nur eine Empfehlung — ändert keine Aufgaben in Firestore.
+ */
+export async function suggestTaskPriority(
+  tasks: PriorityInputTask[],
+): Promise<PrioritySuggestionResult> {
+  if (tasks.length === 0) {
+    return { suggestions: [], source: 'local' };
+  }
+
+  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === 'HIER_EINTRAGEN') {
+    return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
+  }
+
+  // Maximal 10 Tasks an Gemini senden
+  const limited = tasks.slice(0, 10);
+
+  const taskList = limited.map((t, i) => {
+    const parts = [`${i + 1}. "${t.title}"`];
+    if (t.deadline) parts.push(`Deadline: ${t.deadline}`);
+    if (t.priority) parts.push(`Priorität: ${t.priority}`);
+    if (t.effortEstimate) parts.push(`Aufwand: ${t.effortEstimate} Min`);
+    if (t.assignedTo) parts.push(`Zugewiesen: ${t.assignedTo}`);
+    if (t.subtaskProgress) parts.push(`Subtasks: ${t.subtaskProgress}`);
+    if (t.description) parts.push(`Beschreibung: ${t.description}`);
+    return parts.join(' | ');
+  }).join('\n');
+
+  const taskIds = limited.map((t) => t.taskId);
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          {
+            text: `Du bist ein Aufgabenplaner. Sortiere diese offenen Aufgaben nach empfohlener Bearbeitungsreihenfolge. Berücksichtige Deadlines, Priorität und Aufwand. Antworte als JSON-Array mit Objekten: {"taskId": string, "rank": number, "reason": string}. Verwende die exakten taskIds aus der Liste. Begründungen auf Deutsch, max 50 Zeichen. Keine Erklärung, kein Markdown, nur das JSON-Array.\n\nTaskIds: ${JSON.stringify(taskIds)}\n\nAufgaben:\n${taskList}`,
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.5,
+      maxOutputTokens: 800,
+    },
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+
+    const response = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
+    }
+
+    const data = await response.json();
+    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
+    }
+
+    const parsed: unknown = JSON.parse(jsonMatch[0]);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
+    }
+
+    // Validierung: nur gültige Einträge mit bekannten taskIds
+    const validTaskIds = new Set(taskIds);
+    const validated: PrioritySuggestion[] = parsed
+      .filter((item): item is { taskId: string; rank: number; reason: string } =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>).taskId === 'string' &&
+        validTaskIds.has((item as Record<string, unknown>).taskId as string) &&
+        typeof (item as Record<string, unknown>).rank === 'number' &&
+        typeof (item as Record<string, unknown>).reason === 'string',
+      )
+      .map((item, index) => ({
+        taskId: item.taskId,
+        rank: index + 1,
+        reason: item.reason.length > 80 ? item.reason.slice(0, 80) : item.reason,
+      }));
+
+    if (validated.length === 0) {
+      return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
+    }
+
+    return { suggestions: validated, source: 'ai' };
+  } catch {
+    return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
+  }
+}
+
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const GEMINI_TIMEOUT = 8000;

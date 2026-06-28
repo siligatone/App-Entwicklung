@@ -128,6 +128,14 @@ export default function GroupSetupScreen() {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Zurück / Profil ändern */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.replace('/(tabs)/profile')}
+        >
+          <Text style={styles.backButtonText}>← Zurück zum Profil</Text>
+        </TouchableOpacity>
+
         {/* Header */}
         <Text style={styles.headerEmoji}>👥</Text>
         <Text style={styles.title}>Gruppe wählen</Text>
@@ -252,6 +260,17 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxl + Spacing.xl,
     paddingBottom: Spacing.xxl,
     alignItems: 'center',
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  backButtonText: {
+    fontSize: Typography.sizeMD,
+    color: Colors.primary,
+    fontWeight: Typography.weightMedium,
   },
   headerEmoji: {
     fontSize: 56,
