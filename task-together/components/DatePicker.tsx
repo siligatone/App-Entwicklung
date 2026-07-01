@@ -1,7 +1,4 @@
-/**
- * Einfacher Inline-Datumswähler als Monatsgrid.
- * Keine externe Dependency — reines React Native.
- */
+// Inline-Datepicker als Monatsgrid, keine externe Dependency
 
 import { useMemo, useState } from 'react';
 import {
@@ -31,9 +28,7 @@ function getMonthGrid(year: number, month: number): (number | null)[] {
 }
 
 interface DatePickerProps {
-  /** Aktuell gewähltes Datum (null = keine Deadline). */
-  value: Date | null;
-  /** Callback wenn ein Datum gewählt wird. null = Deadline entfernt. */
+  value: Date | null; // null = keine Deadline
   onChange: (date: Date | null) => void;
 }
 

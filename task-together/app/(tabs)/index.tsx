@@ -1,7 +1,4 @@
-/**
- * Aufgabenliste — Echtzeit-Sync aus Firestore.
- * Offene Tasks oben (neueste zuerst), erledigte unten.
- */
+// Aufgabenliste mit Filter und Echtzeit-Sync
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -19,7 +16,7 @@ import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup 
 import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task, type Priority } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
-/** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
+// Firestore Timestamp → Date
 function toDate(timestamp: unknown): Date | null {
   if (timestamp == null) return null;
   if (typeof (timestamp as { toDate?: unknown }).toDate === 'function') {
@@ -29,7 +26,7 @@ function toDate(timestamp: unknown): Date | null {
   return null;
 }
 
-/** Deutsches Zeitformat: "Heute, 14:30" / "Gestern, 09:15" / "25.06., 10:15" */
+// Zeitstempel auf Deutsch formatieren
 function formatTimestamp(timestamp: unknown): string {
   const date = toDate(timestamp);
   if (!date) return '';
@@ -48,7 +45,7 @@ function formatTimestamp(timestamp: unknown): string {
   return `${day}, ${time}`;
 }
 
-/** Sortiert: offene Tasks zuerst, dann erledigte. Innerhalb jeder Gruppe neueste zuerst. */
+// offene zuerst, dann erledigte
 function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1;
@@ -139,14 +136,14 @@ export default function TasksScreen() {
     return () => unsubscribe();
   }, [group, profile]);
 
-  /** Prüft ob der aktuelle Nutzer diese Aufgabe erledigen/wieder öffnen darf (Demo-UI-Guard). */
+  // darf dieser User die Aufgabe abhaken?
   function canToggle(task: Task): boolean {
     if (!profile) return false;
     if (!task.assignedTo) return true; // Keine Zuweisung → alle dürfen
     return task.assignedTo.userId === profile.userId;
   }
 
-  /** Prüft ob der aktuelle Nutzer diese Aufgabe löschen darf (Demo-UI-Guard). */
+  // darf dieser User die Aufgabe löschen?
   function canDelete(task: Task): boolean {
     if (!profile) return false;
     return task.createdBy.userId === profile.userId;

@@ -1,7 +1,4 @@
-/**
- * Task Details + Bearbeiten — Echtzeit-Sync via onSnapshot.
- * Zeigt alle Infos zu einem Task. Titel und Beschreibung sind bearbeitbar.
- */
+// Aufgabe anzeigen und bearbeiten
 
 import { useEffect, useState } from 'react';
 import {
@@ -24,7 +21,7 @@ import { suggestSubtasksAI } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 import DatePicker from '../../components/DatePicker';
 
-/** Firestore Timestamp zu Date — gibt null zurück wenn nicht verfügbar. */
+// Firestore Timestamp → Date
 function toDate(timestamp: unknown): Date | null {
   if (timestamp == null) return null;
   if (typeof (timestamp as { toDate?: unknown }).toDate === 'function') {
@@ -34,7 +31,7 @@ function toDate(timestamp: unknown): Date | null {
   return null;
 }
 
-/** Deutsches Zeitformat: "Heute, 14:30" / "Gestern, 09:15" / "25.06., 10:15" */
+// Zeitstempel auf Deutsch formatieren
 function formatTimestamp(timestamp: unknown): string {
   const date = toDate(timestamp);
   if (!date) return '–';

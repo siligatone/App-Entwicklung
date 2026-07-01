@@ -1,9 +1,4 @@
-/**
- * Onboarding-Screen: Name + Emoji wählen.
- *
- * Erstellt ein Demo-Profil (kein echtes Login).
- * Speichert in Firestore unter users/{userId} und cached lokal.
- */
+// Onboarding: Name + Emoji wählen, Profil anlegen
 
 import { useState } from 'react';
 import {

@@ -1,9 +1,4 @@
-/**
- * Task-Service: Firestore CRUD für Aufgaben.
- *
- * Alle Tasks liegen in der Collection "tasks".
- * Echtzeit-Updates via onSnapshot-Listener.
- */
+// Firestore CRUD für Tasks
 
 import {
   collection,
@@ -21,29 +16,26 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 
-/** Snapshot des Erstellers — eingebettet im Task-Dokument */
+// wer eine Aufgabe erstellt/erledigt/zugeteilt hat
 export interface UserSnapshot {
   userId: string;
   displayName: string;
   emoji: string;
 }
 
-/** Prioritätsstufen */
 export type Priority = 'low' | 'medium' | 'high';
 
-/** Subtask — abhakbarer Unterpunkt einer Aufgabe */
 export interface Subtask {
   id: string;
   title: string;
   done: boolean;
 }
 
-/** Erzeugt eine einfache lokale ID (keine Dependency nötig) */
+// einfache ID ohne externe lib
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Task-Dokument aus Firestore */
 export interface Task {
   id: string;
   title: string;
@@ -58,12 +50,12 @@ export interface Task {
   effortEstimate: number | null; // Minuten
   deadline: unknown | null; // Firestore Timestamp
   subtasks: Subtask[];
-  createdAt: unknown; // Firestore Timestamp
+  createdAt: unknown;
   updatedAt: unknown;
   completedAt: unknown | null;
 }
 
-/** Input für createTask — nur die Felder die der Nutzer eingibt */
+// Eingabe beim Erstellen
 export interface CreateTaskInput {
   title: string;
   description: string;
@@ -77,10 +69,7 @@ export interface CreateTaskInput {
 
 const tasksCollection = collection(db, 'tasks');
 
-/**
- * Erstellt einen neuen Task in Firestore.
- * assignedTo ist optional — wenn nicht angegeben, wird null gespeichert.
- */
+// Task anlegen, assignedTo optional
 export async function createTask(
   input: CreateTaskInput,
   currentUser: UserSnapshot,
@@ -112,10 +101,7 @@ export async function createTask(
   return docRef.id;
 }
 
-/**
- * Markiert einen Task als erledigt.
- * Setzt done=true, completedBy und completedAt.
- */
+// Task abhaken
 export async function completeTask(
   taskId: string,
   currentUser: UserSnapshot,
@@ -133,10 +119,7 @@ export async function completeTask(
   });
 }
 
-/**
- * Setzt einen erledigten Task wieder auf offen.
- * Löscht completedBy und completedAt.
- */
+// Task wieder öffnen
 export async function reopenTask(taskId: string): Promise<void> {
   const taskRef = doc(db, 'tasks', taskId);
   await updateDoc(taskRef, {
@@ -147,18 +130,13 @@ export async function reopenTask(taskId: string): Promise<void> {
   });
 }
 
-/**
- * Löscht ein Task-Dokument aus Firestore.
- * Löscht ausschließlich tasks/{taskId} — keine anderen Collections.
- */
+// Task löschen
 export async function deleteTask(taskId: string): Promise<void> {
   const taskRef = doc(db, 'tasks', taskId);
   await deleteDoc(taskRef);
 }
 
-/**
- * Aktualisiert Titel, Beschreibung und Metadaten eines Tasks.
- */
+// Task bearbeiten
 export async function updateTask(
   taskId: string,
   input: CreateTaskInput,
@@ -178,10 +156,7 @@ export async function updateTask(
   });
 }
 
-/**
- * Schaltet den done-Status eines Subtasks um.
- * Liest die aktuelle subtasks-Liste, ändert den Eintrag und schreibt zurück.
- */
+// Subtask an-/abhaken
 export async function toggleSubtask(
   taskId: string,
   subtaskId: string,
@@ -198,10 +173,7 @@ export async function toggleSubtask(
   });
 }
 
-/**
- * Abonniert einen einzelnen Task in Echtzeit.
- * Gibt eine unsubscribe-Funktion zurück.
- */
+// einzelnen Task live laden
 export function subscribeToTask(
   taskId: string,
   onTask: (task: Task | null) => void,
@@ -224,15 +196,7 @@ export function subscribeToTask(
   );
 }
 
-/**
- * Abonniert Tasks in Echtzeit.
- *
- * Wenn groupId angegeben wird, werden nur Tasks dieser Gruppe geladen.
- * Sortierung erfolgt clientseitig (neueste zuerst), um einen Firestore
- * Composite Index auf (groupId, createdAt) zu vermeiden.
- *
- * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
- */
+// alle Tasks live laden, clientseitig filtern um Composite Index zu vermeiden
 export function subscribeToTasks(
   onTasks: (tasks: Task[]) => void,
   onError: (error: string) => void,
@@ -250,7 +214,7 @@ export function subscribeToTasks(
         ...d.data(),
       })) as Task[];
 
-      // Clientseitige Sortierung wenn groupId-Filter aktiv (kein orderBy im Query)
+      // clientseitig sortieren wenn groupId-Filter aktiv (kein orderBy im Query)
       if (groupId) {
         tasks.sort((a, b) => {
           const dateA = toTimestamp(a.createdAt);
@@ -267,7 +231,7 @@ export function subscribeToTasks(
   );
 }
 
-/** Hilfsfunktion: Firestore Timestamp zu Millisekunden */
+// Timestamp → ms
 function toTimestamp(value: unknown): number {
   if (value == null) return 0;
   if (typeof (value as { toMillis?: unknown }).toMillis === 'function') {

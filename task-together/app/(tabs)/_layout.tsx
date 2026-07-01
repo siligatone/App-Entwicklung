@@ -1,7 +1,3 @@
-/**
- * Tab-Layout — Bottom Navigation mit fünf Tabs:
- * Aufgaben (Home), Übersicht, Kalender, Neue Aufgabe, Profil.
- */
 
 import { Tabs } from 'expo-router';
 import { Text } from 'react-native';

@@ -1,11 +1,4 @@
-/**
- * Kalender-Tab — Monatsansicht mit Tagesdetails.
- *
- * Oben: Monatsnavigation mit Vor/Zurück und Heute-Button.
- * Mitte: 7-Spalten-Grid (Mo–So), Tage mit Deadlines bekommen Punkt.
- * Unten: Aufgaben des ausgewählten Tages + überfällige Aufgaben.
- * Nur Aufgaben der aktiven Gruppe (oder persönliche ohne Gruppe).
- */
+// Kalender mit Monatsansicht und Deadline-Übersicht
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -49,7 +42,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high: { label: 'Hoch', color: Colors.danger },
 };
 
-/** Erzeugt die Tageszellen für ein Monatsgrid (inkl. leerer Zellen am Anfang). */
+// Tageszellen für Monatsgrid erzeugen
 function getMonthGrid(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1);
   // Montag = 0, Sonntag = 6 (JS: Sonntag = 0, Montag = 1)
@@ -62,7 +55,7 @@ function getMonthGrid(year: number, month: number): (number | null)[] {
   return cells;
 }
 
-/** Set von Tages-Strings (YYYY-MM-DD) die Deadlines haben. */
+// Tage mit Deadlines als Set zurückgeben
 function getDeadlineDays(tasks: Task[]): Set<string> {
   const days = new Set<string>();
   for (const t of tasks) {

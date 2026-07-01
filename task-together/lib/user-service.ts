@@ -1,11 +1,4 @@
-/**
- * User-Service: Firestore CRUD für Demo-Profile.
- *
- * HINWEIS: Dies ist ein Demo-Profilsystem ohne echte Authentifizierung.
- * - Kein Login, kein Passwort, keine E-Mail.
- * - Nutzeridentifikation erfolgt über eine lokal generierte UUID.
- * - Für Produktion: Firebase Auth + restriktivere Firestore Security Rules verwenden.
- */
+// Firestore CRUD für Nutzerprofile
 
 import {
   collection,
@@ -29,13 +22,11 @@ export interface UserProfile {
   emoji: string;
   groupId?: string | null;
   labels?: string[];
-  createdAt: unknown; // Firestore Timestamp
+  createdAt: unknown;
   updatedAt: unknown;
 }
 
-/**
- * Speichert ein neues Profil in Firestore unter users/{userId}.
- */
+// Profil anlegen
 export async function createUserProfile(
   userId: string,
   displayName: string,
@@ -51,9 +42,7 @@ export async function createUserProfile(
   });
 }
 
-/**
- * Lädt ein Profil aus Firestore. Gibt null zurück, wenn kein Profil existiert.
- */
+// Profil laden
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   const userRef = doc(db, 'users', userId);
   const snapshot = await getDoc(userRef);
@@ -63,23 +52,13 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   return snapshot.data() as UserProfile;
 }
 
-/**
- * Löscht das Profil-Dokument users/{userId} aus Firestore.
- * Löscht ausschließlich dieses eine Dokument — keine anderen User oder Collections.
- */
+// Profil löschen
 export async function deleteUserProfile(userId: string): Promise<void> {
   const userRef = doc(db, 'users', userId);
   await deleteDoc(userRef);
 }
 
-/**
- * Abonniert Demo-Profile in Echtzeit.
- * Wenn groupId angegeben wird, werden nur Mitglieder dieser Gruppe geladen.
- * Gibt eine unsubscribe-Funktion zurück — im useEffect-Cleanup aufrufen.
- */
-/**
- * Echtzeit-Listener für ein einzelnes User-Profil.
- */
+// eigenes Profil live beobachten
 export function subscribeToUserProfile(
   userId: string,
   onProfile: (profile: UserProfile | null) => void,
@@ -101,9 +80,7 @@ export function subscribeToUserProfile(
   );
 }
 
-/**
- * Fügt ein neues Label zum User-Profil hinzu (idempotent dank arrayUnion).
- */
+// neues Label zum Profil hinzufügen
 export async function addUserLabel(userId: string, label: string): Promise<void> {
   const userRef = doc(db, 'users', userId);
   await updateDoc(userRef, {
@@ -112,6 +89,7 @@ export async function addUserLabel(userId: string, label: string): Promise<void>
   });
 }
 
+// Gruppenmitglieder live laden
 export function subscribeToUsers(
   onUsers: (users: UserProfile[]) => void,
   onError: (error: string) => void,

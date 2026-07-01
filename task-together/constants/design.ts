@@ -1,31 +1,23 @@
-/**
- * Design-Tokens für TaskTogether.
- * iOS-inspiriertes Design-System mit ruhigen Farben und klaren Abständen.
- */
+// Design-Tokens, iOS-Stil
 
 export const Colors = {
-  // Primärfarbe — iOS-Systemviolett
   primary: '#5856D6',
   primaryLight: '#7B79E0',
   primaryDark: '#3D3BB8',
 
-  // Hintergründe
-  backgroundPrimary: '#F2F2F7',   // iOS-System-Grau (Haupthintergrund)
-  backgroundCard: '#FFFFFF',       // Karten-Hintergrund
+  backgroundPrimary: '#F2F2F7',
+  backgroundCard: '#FFFFFF',
 
-  // Text
-  textPrimary: '#1C1C1E',         // iOS-Label-Primär
-  textSecondary: '#3C3C43',       // iOS-Label-Sekundär
-  textTertiary: '#8E8E93',        // iOS-Label-Tertiär (Hints, Metainfos)
+  textPrimary: '#1C1C1E',
+  textSecondary: '#3C3C43',
+  textTertiary: '#8E8E93',
   textOnPrimary: '#FFFFFF',
 
-  // Status
-  success: '#34C759',             // iOS-Grün
-  danger: '#FF3B30',              // iOS-Rot
-  warning: '#FF9500',             // iOS-Orange
+  success: '#34C759',
+  danger: '#FF3B30',
+  warning: '#FF9500',
 
-  // Trennlinien
-  separator: '#C6C6C8',           // iOS-Separator
+  separator: '#C6C6C8',
   separatorOpaque: '#E5E5EA',
 };
 
@@ -84,5 +76,5 @@ export const Shadows = {
   },
 };
 
-/** Minimale Touch-Fläche laut Apple HIG */
+// Apple HIG: mindestens 44pt
 export const MIN_TOUCH_TARGET = 44;

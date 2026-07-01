@@ -1,11 +1,4 @@
-/**
- * Group-Service: Firestore CRUD für Demo-Gruppen.
- *
- * HINWEIS: Gruppen sind eine rein clientseitige Demo-Trennung.
- * - Kein Firebase Auth — jeder mit dem Join-Code kann beitreten.
- * - Join-Codes sind 6 Zeichen, nicht kryptografisch sicher.
- * - Für Produktion: Firebase Auth + Firestore Security Rules verwenden.
- */
+// Firestore CRUD für Gruppen
 
 import {
   collection,
@@ -26,8 +19,6 @@ import {
 import { db } from './firebase';
 import type { UserProfile } from './user-service';
 
-// --- Typen ---
-
 export interface UserSnapshot {
   userId: string;
   displayName: string;
@@ -41,17 +32,13 @@ export interface Group {
   createdBy: UserSnapshot;
   memberIds: string[];
   labels: string[];
-  createdAt: unknown; // Firestore Timestamp
+  createdAt: unknown;
   updatedAt: unknown;
 }
 
-// --- Hilfsfunktionen ---
+const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne verwechselbare Zeichen (I, O, 0, 1)
 
-const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne I/O/0/1 zur Vermeidung von Verwechslungen
-
-/**
- * Erzeugt einen 6-stelligen, zufälligen Join-Code (uppercase alphanumerisch).
- */
+// 6-stelligen Join-Code erzeugen
 export function generateJoinCode(): string {
   let code = '';
   for (let i = 0; i < 6; i++) {
@@ -62,25 +49,15 @@ export function generateJoinCode(): string {
 
 const groupsCollection = collection(db, 'groups');
 
-// --- CRUD ---
-
-/**
- * Erstellt eine neue Gruppe in Firestore.
- * - Generiert einen einzigartigen Join-Code
- * - Fügt den Creator als erstes Mitglied hinzu
- * - Setzt groupId auf dem User-Profil
- *
- * @returns Die erstellte Gruppe
- */
+// Gruppe anlegen
 export async function createGroup(
   name: string,
   creator: UserSnapshot,
 ): Promise<Group> {
-  // Join-Code generieren und Eindeutigkeit prüfen (Demo-Skala: Kollision extrem unwahrscheinlich)
   let joinCode = generateJoinCode();
   const existing = await getGroupByJoinCode(joinCode);
   if (existing) {
-    joinCode = generateJoinCode(); // Einmal Retry reicht bei Demo-Skala
+    joinCode = generateJoinCode(); // einmal reichen
   }
 
   const groupRef = doc(groupsCollection);
@@ -102,21 +79,14 @@ export async function createGroup(
 
   await setDoc(groupRef, groupData);
 
-  // groupId auf User-Profil setzen
+  // groupId beim User eintragen
   const userRef = doc(db, 'users', creator.userId);
   await updateDoc(userRef, { groupId, updatedAt: serverTimestamp() });
 
   return { ...groupData, createdAt: null, updatedAt: null } as unknown as Group;
 }
 
-/**
- * Tritt einer bestehenden Gruppe per Join-Code bei.
- * - Normalisiert den Code auf Uppercase
- * - Fügt userId via arrayUnion in memberIds hinzu
- * - Setzt groupId auf dem User-Profil
- *
- * @returns Die Gruppe, oder null falls der Code ungültig ist
- */
+// Gruppe per Join-Code beitreten
 export async function joinGroup(
   joinCode: string,
   userProfile: UserSnapshot,
@@ -126,28 +96,19 @@ export async function joinGroup(
 
   if (!group) return null;
 
-  // User zur Gruppe hinzufügen (idempotent dank arrayUnion)
   const groupRef = doc(db, 'groups', group.groupId);
   await updateDoc(groupRef, {
-    memberIds: arrayUnion(userProfile.userId),
+    memberIds: arrayUnion(userProfile.userId), // idempotent
     updatedAt: serverTimestamp(),
   });
 
-  // groupId auf User-Profil setzen
   const userRef = doc(db, 'users', userProfile.userId);
   await updateDoc(userRef, { groupId: group.groupId, updatedAt: serverTimestamp() });
 
   return { ...group, memberIds: [...group.memberIds, userProfile.userId] };
 }
 
-/**
- * Verlässt eine Gruppe.
- * - Entfernt userId aus memberIds via arrayRemove
- * - Setzt users/{userId}.groupId auf null
- *
- * Gruppe wird NICHT gelöscht, auch wenn letztes Mitglied geht.
- * Tasks bleiben unberührt.
- */
+// Gruppe verlassen
 export async function leaveGroup(
   groupId: string,
   userId: string,
@@ -162,31 +123,21 @@ export async function leaveGroup(
   await updateDoc(userRef, { groupId: null, updatedAt: serverTimestamp() });
 }
 
-/**
- * Löscht eine Gruppe aus Firestore.
- * Setzt bei allen Mitgliedern users/{userId}.groupId auf null.
- * Tasks bleiben unberührt (behalten ihre groupId, sind aber verwaist).
- *
- * Nur der Ersteller sollte dies aufrufen (UI-Guard im Client).
- */
+// Gruppe löschen — nur Ersteller sollte das aufrufen
 export async function deleteGroup(
   groupId: string,
   memberIds: string[],
 ): Promise<void> {
-  // Alle Mitglieder aus der Gruppe entfernen
   for (const userId of memberIds) {
     const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, { groupId: null, updatedAt: serverTimestamp() });
   }
 
-  // Gruppe löschen
   const groupRef = doc(db, 'groups', groupId);
   await deleteDoc(groupRef);
 }
 
-/**
- * Lädt eine Gruppe per groupId aus Firestore.
- */
+// Gruppe laden
 export async function getGroup(groupId: string): Promise<Group | null> {
   const groupRef = doc(db, 'groups', groupId);
   const snapshot = await getDoc(groupRef);
@@ -196,9 +147,7 @@ export async function getGroup(groupId: string): Promise<Group | null> {
   return snapshot.data() as Group;
 }
 
-/**
- * Sucht eine Gruppe anhand des Join-Codes.
- */
+// Gruppe per Join-Code suchen
 export async function getGroupByJoinCode(joinCode: string): Promise<Group | null> {
   const q = query(groupsCollection, where('joinCode', '==', joinCode));
   const snapshot = await getDocs(q);
@@ -208,9 +157,7 @@ export async function getGroupByJoinCode(joinCode: string): Promise<Group | null
   return snapshot.docs[0].data() as Group;
 }
 
-/**
- * Fügt ein neues Label zur Gruppe hinzu (idempotent dank arrayUnion).
- */
+// neues Label zur Gruppe hinzufügen
 export async function addGroupLabel(groupId: string, label: string): Promise<void> {
   const groupRef = doc(db, 'groups', groupId);
   await updateDoc(groupRef, {
@@ -219,9 +166,7 @@ export async function addGroupLabel(groupId: string, label: string): Promise<voi
   });
 }
 
-/**
- * Echtzeit-Listener für Gruppenänderungen (z. B. neue Mitglieder).
- */
+// Gruppe live beobachten
 export function subscribeToGroup(
   groupId: string,
   onGroup: (group: Group | null) => void,

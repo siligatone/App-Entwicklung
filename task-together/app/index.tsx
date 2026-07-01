@@ -1,13 +1,4 @@
-/**
- * Entry Point — Redirect-Logik.
- *
- * Prüft:
- * 1. Existiert eine lokale userId in AsyncStorage?
- * 2. Existiert ein Firestore-Profil für diese userId?
- *
- * Wenn beides ja → /(tabs) (Gruppe optional)
- * Wenn userId fehlt oder Firestore-Profil fehlt → /onboarding
- */
+// Entry Point — Weiterleitung zu Onboarding oder App
 
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -22,14 +13,14 @@ export default function Index() {
 
   useEffect(() => {
     async function redirect() {
-      // 1. userId vorhanden?
+      // userId vorhanden?
       const userId = await getExistingUserId();
       if (!userId) {
         router.replace('/onboarding');
         return;
       }
 
-      // 2. Profil vorhanden? (Cache oder Firestore)
+      // Profil vorhanden? Cache oder Firestore
       let profile = await getCachedProfile();
       if (!profile) {
         try {
@@ -51,7 +42,7 @@ export default function Index() {
         }
       }
 
-      // 3. Gruppe optional — Cache wiederherstellen falls vorhanden
+      // Gruppe optional — Cache wiederherstellen falls vorhanden
       const cachedGroup = await getCachedGroup();
       if (cachedGroup) {
         try {
@@ -60,7 +51,7 @@ export default function Index() {
             await clearGroupCache();
           }
         } catch {
-          // Netzwerkfehler — Cache behalten
+          // Netzwerkfehler, Cache behalten
         }
       } else {
         // Kein Cache — prüfe ob Firestore-Profil eine groupId hat
@@ -77,11 +68,11 @@ export default function Index() {
             }
           }
         } catch {
-          // Netzwerkfehler — weiter ohne Gruppe
+          // Netzwerkfehler, weiter ohne Gruppe
         }
       }
 
-      // Immer zu /(tabs) — Gruppe ist optional
+      // Gruppe ist optional, immer zu Tabs
       router.replace('/(tabs)');
     }
     redirect();

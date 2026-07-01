@@ -1,22 +1,5 @@
-/**
- * Aufgaben-Assistent mit zwei Modi:
- *
- * 1. suggestSubtasksAI() — Echte KI-Vorschläge via Gemini API.
- *    Nutzt EXPO_PUBLIC_GEMINI_API_KEY aus .env.
- *    Bei Fehler/Timeout → automatischer Fallback auf regelbasierten Modus.
- *
- * 2. suggestSubtasks() — Lokaler regelbasierter Fallback.
- *    Funktioniert komplett offline via Keyword-Matching.
- *
- * DEMO-HINWEIS:
- * Die Gemini-Integration ist eine Demo-Lösung für ein Uni-Projekt.
- * Der API-Key liegt clientseitig über EXPO_PUBLIC_ und ist NICHT
- * produktionssicher. Für eine echte App müsste der Key in einem
- * sicheren Backend liegen (Firebase Function, n8n Webhook, o.ä.).
- * .env wird nicht committed. Es werden keine vertraulichen Daten
- * an die KI gesendet (nur Aufgabentitel und optionale Beschreibung).
- * KI-Vorschläge erzeugen keine automatischen Datenbankänderungen.
- */
+// Unteraufgaben-Vorschläge und Aufgaben-Priorisierung
+// Gemini API wenn API-Key vorhanden, sonst lokaler Fallback
 
 interface Rule {
   keywords: string[];
@@ -104,10 +87,7 @@ const fallbackSuggestions = [
   'Ergebnis prüfen und abschließen',
 ];
 
-/**
- * Schlägt 3–5 Unteraufgaben basierend auf dem Titel vor.
- * Rein lokal, kein Netzwerk, keine externe API.
- */
+// lokal, kein Netzwerk
 export function suggestSubtasks(title: string): string[] {
   const lower = title.toLowerCase();
 
@@ -120,17 +100,16 @@ export function suggestSubtasks(title: string): string[] {
   return fallbackSuggestions;
 }
 
-// --- Typen für KI-Priorisierung ---
-
+// Typen für Priorisierung
 export interface PriorityInputTask {
   taskId: string;
   title: string;
   description: string;
-  deadline: string | null;      // ISO-Datum oder null
-  priority: string | null;      // 'low' | 'medium' | 'high' | null
+  deadline: string | null;
+  priority: string | null;
   effortEstimate: number | null; // Minuten
-  assignedTo: string | null;    // displayName oder null
-  subtaskProgress: string | null; // z. B. "2/5"
+  assignedTo: string | null;
+  subtaskProgress: string | null; // z.B. "2/5"
 }
 
 export interface PrioritySuggestion {
@@ -144,15 +123,7 @@ export interface PrioritySuggestionResult {
   source: 'ai' | 'local';
 }
 
-/**
- * Lokaler Fallback-Priorisierungsalgorithmus.
- * Sortiert offene Aufgaben nach:
- * 1. Überfällig (Deadline < heute)
- * 2. Deadline heute/morgen
- * 3. Hohe Priorität
- * 4. Niedriger Aufwand (schnelle Wins)
- * 5. Mehr offene Subtasks
- */
+// nach Deadline, Priorität und Aufwand sortieren
 export function prioritizeTasksLocally(tasks: PriorityInputTask[]): PrioritySuggestion[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -160,16 +131,16 @@ export function prioritizeTasksLocally(tasks: PriorityInputTask[]): PrioritySugg
   function getScore(task: PriorityInputTask): number {
     let score = 0;
 
-    // Deadline-Dringlichkeit (höchste Gewichtung)
+    // Deadline-Score
     if (task.deadline) {
       const dl = new Date(task.deadline);
       const dlDay = new Date(dl.getFullYear(), dl.getMonth(), dl.getDate());
       const diffDays = Math.round((dlDay.getTime() - today.getTime()) / 86400000);
-      if (diffDays < 0) score += 1000;        // Überfällig
-      else if (diffDays === 0) score += 800;   // Heute
-      else if (diffDays === 1) score += 600;   // Morgen
-      else if (diffDays <= 3) score += 400;    // Nächste 3 Tage
-      else if (diffDays <= 7) score += 200;    // Diese Woche
+      if (diffDays < 0) score += 1000;        // überfällig
+      else if (diffDays === 0) score += 800;   // heute
+      else if (diffDays === 1) score += 600;   // morgen
+      else if (diffDays <= 3) score += 400;    // nächste 3 Tage
+      else if (diffDays <= 7) score += 200;    // diese Woche
     }
 
     // Priorität
@@ -177,14 +148,14 @@ export function prioritizeTasksLocally(tasks: PriorityInputTask[]): PrioritySugg
     else if (task.priority === 'medium') score += 80;
     else if (task.priority === 'low') score += 20;
 
-    // Niedriger Aufwand bevorzugen (schnelle Wins)
+    // kurze Aufgaben bevorzugen
     if (task.effortEstimate != null) {
       if (task.effortEstimate <= 15) score += 50;
       else if (task.effortEstimate <= 30) score += 30;
       else if (task.effortEstimate <= 60) score += 10;
     }
 
-    // Mehr offene Subtasks → höher
+    // mehr offene Subtasks → weiter oben
     if (task.subtaskProgress) {
       const match = task.subtaskProgress.match(/(\d+)\/(\d+)/);
       if (match) {
@@ -234,12 +205,7 @@ export function prioritizeTasksLocally(tasks: PriorityInputTask[]): PrioritySugg
     }));
 }
 
-/**
- * Schlägt eine Bearbeitungsreihenfolge für offene Aufgaben vor.
- * Nutzt Gemini KI wenn verfügbar, sonst lokalen Fallback.
- *
- * DEMO-HINWEIS: Nur eine Empfehlung — ändert keine Aufgaben in Firestore.
- */
+// Aufgaben nach Dringlichkeit sortieren, Gemini wenn API-Key vorhanden
 export async function suggestTaskPriority(
   tasks: PriorityInputTask[],
 ): Promise<PrioritySuggestionResult> {
@@ -253,7 +219,6 @@ export async function suggestTaskPriority(
     return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
   }
 
-  // Maximal 10 Tasks an Gemini senden
   const limited = tasks.slice(0, 10);
 
   const taskList = limited.map((t, i) => {
@@ -305,6 +270,7 @@ export async function suggestTaskPriority(
     const data = await response.json();
     const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
+    // Gemini kann Markdown drumherum schreiben
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
@@ -316,7 +282,7 @@ export async function suggestTaskPriority(
       return { suggestions: prioritizeTasksLocally(tasks), source: 'local' };
     }
 
-    // Validierung: nur gültige Einträge mit bekannten taskIds
+    // nur gültige taskIds durchlassen
     const validTaskIds = new Set(taskIds);
     const validated: PrioritySuggestion[] = parsed
       .filter((item): item is { taskId: string; rank: number; reason: string } =>
@@ -347,11 +313,7 @@ const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const GEMINI_TIMEOUT = 8000;
 
-/**
- * Schlägt Unteraufgaben via Gemini KI vor.
- * Bei Fehler, Timeout oder fehlendem API-Key → Fallback auf regelbasierten Modus.
- * Gibt { suggestions, source } zurück, damit die UI anzeigen kann woher die Vorschläge kommen.
- */
+// Unteraufgaben vorschlagen, Gemini wenn verfügbar
 export async function suggestSubtasksAI(
   title: string,
   description?: string,
@@ -402,7 +364,6 @@ export async function suggestSubtasksAI(
     const data = await response.json();
     const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-    // JSON-Array aus der Antwort extrahieren (Gemini kann Markdown-Wrapper hinzufügen)
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       return { suggestions: suggestSubtasks(title), source: 'local' };
@@ -414,7 +375,7 @@ export async function suggestSubtasksAI(
       return { suggestions: suggestSubtasks(title), source: 'local' };
     }
 
-    // Nur gültige Strings akzeptieren, max 200 Zeichen pro Eintrag
+    // validieren
     const validated = parsed
       .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       .map((s) => (s.length > 200 ? s.slice(0, 200) : s))

@@ -1,7 +1,4 @@
-/**
- * Dashboard — Kompakte Statistiken und Übersicht aller Aufgaben.
- * Echtzeit-Sync via bestehender Task-Subscription.
- */
+// Übersicht und Statistiken
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -18,7 +15,7 @@ import { subscribeToTasks, type Task } from '../../lib/task-service';
 import { prioritizeTasksLocally, type PrioritySuggestion, type PriorityInputTask } from '../../lib/task-assistant';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
 
-/** Firestore Timestamp zu Date */
+// Firestore Timestamp → Date
 function toDate(timestamp: unknown): Date | null {
   if (timestamp == null) return null;
   if (typeof (timestamp as { toDate?: unknown }).toDate === 'function') {
@@ -28,7 +25,7 @@ function toDate(timestamp: unknown): Date | null {
   return null;
 }
 
-/** Deadline-Info mit Überfällig-Status */
+// Deadline formatieren mit Überfällig-Status
 function getDeadlineInfo(timestamp: unknown): { date: Date; text: string; overdue: boolean } | null {
   const date = toDate(timestamp);
   if (!date) return null;

@@ -1,9 +1,4 @@
-/**
- * Profil-Screen: Aktuelles Demo-Profil anzeigen + Profil-Reset.
- *
- * Der Reset löscht zuerst das Firestore-Dokument users/{userId},
- * dann die lokalen AsyncStorage-Daten, und leitet zum Onboarding.
- */
+// Profil und Gruppeneinstellungen
 
 import { useEffect, useState } from 'react';
 import {

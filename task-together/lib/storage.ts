@@ -1,15 +1,10 @@
-/**
- * AsyncStorage-Helper für die lokale Nutzer-ID.
- *
- * Erzeugt beim ersten Aufruf eine zufällige UUID und speichert sie dauerhaft.
- * Keine echte Authentifizierung — dient der Geräteidentifikation für die Demo.
- */
+// AsyncStorage-Wrapper für userId, Profil und Gruppe
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const USER_ID_KEY = '@tasktogether/userId';
 
-/** Erzeugt eine einfache UUID v4 ohne externe Abhängigkeit */
+// UUID v4 ohne externe lib
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -18,9 +13,7 @@ function generateUUID(): string {
   });
 }
 
-/**
- * Gibt die userId zurück. Erzeugt sie beim ersten Aufruf.
- */
+// userId holen oder neu anlegen
 export async function getUserId(): Promise<string> {
   try {
     const stored = await AsyncStorage.getItem(USER_ID_KEY);
@@ -30,15 +23,11 @@ export async function getUserId(): Promise<string> {
     await AsyncStorage.setItem(USER_ID_KEY, newId);
     return newId;
   } catch {
-    // Fallback: temporäre ID (wird nicht gespeichert)
-    return generateUUID();
+    return generateUUID(); // temp ID als Fallback
   }
 }
 
-/**
- * Gibt die userId zurück, falls sie bereits existiert — sonst null.
- * Nützlich für die Redirect-Logik im Root-Index.
- */
+// userId nur lesen, nicht anlegen
 export async function getExistingUserId(): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(USER_ID_KEY);
@@ -47,15 +36,12 @@ export async function getExistingUserId(): Promise<string | null> {
   }
 }
 
-/**
- * Löscht die gespeicherte userId und alle lokalen Profildaten.
- * Für Profil-Reset und Tests.
- */
+// alles löschen (Profil-Reset)
 export async function clearUserData(): Promise<void> {
   await AsyncStorage.multiRemove([USER_ID_KEY, PROFILE_CACHE_KEY, GROUP_CACHE_KEY]);
 }
 
-// --- Lokaler Gruppen-Cache ---
+// --- Gruppen-Cache ---
 
 const GROUP_CACHE_KEY = '@tasktogether/groupCache';
 
@@ -65,17 +51,12 @@ export interface CachedGroup {
   joinCode: string;
 }
 
-/**
- * Speichert Gruppeninfo lokal, damit die App beim Start sofort weiß,
- * ob der Nutzer einer Gruppe angehört.
- */
+// Gruppe lokal cachen
 export async function cacheGroup(group: CachedGroup): Promise<void> {
   await AsyncStorage.setItem(GROUP_CACHE_KEY, JSON.stringify(group));
 }
 
-/**
- * Lädt die lokal gecachte Gruppe. Gibt null zurück, wenn keine existiert.
- */
+// gecachte Gruppe laden
 export async function getCachedGroup(): Promise<CachedGroup | null> {
   try {
     const data = await AsyncStorage.getItem(GROUP_CACHE_KEY);
@@ -86,14 +67,12 @@ export async function getCachedGroup(): Promise<CachedGroup | null> {
   }
 }
 
-/**
- * Löscht den lokalen Gruppen-Cache.
- */
+// Gruppen-Cache löschen
 export async function clearGroupCache(): Promise<void> {
   await AsyncStorage.removeItem(GROUP_CACHE_KEY);
 }
 
-// --- Lokaler Profil-Cache ---
+// --- Profil-Cache ---
 
 const PROFILE_CACHE_KEY = '@tasktogether/profileCache';
 
@@ -103,17 +82,12 @@ export interface CachedProfile {
   emoji: string;
 }
 
-/**
- * Speichert Profildaten lokal, damit der Header sofort angezeigt werden kann
- * ohne auf Firestore zu warten.
- */
+// Profil lokal cachen
 export async function cacheProfile(profile: CachedProfile): Promise<void> {
   await AsyncStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
 }
 
-/**
- * Lädt das lokal gecachte Profil. Gibt null zurück, wenn keins existiert.
- */
+// gecachtes Profil laden
 export async function getCachedProfile(): Promise<CachedProfile | null> {
   try {
     const data = await AsyncStorage.getItem(PROFILE_CACHE_KEY);

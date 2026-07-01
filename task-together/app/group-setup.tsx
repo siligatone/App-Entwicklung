@@ -1,9 +1,4 @@
-/**
- * Group Setup Screen: Gruppe erstellen oder per Join-Code beitreten.
- *
- * Wird angezeigt, wenn der Nutzer ein Profil hat, aber noch keiner Gruppe angehört.
- * Nach Erfolg wird die Gruppe lokal gecacht und zur Hauptansicht navigiert.
- */
+// Gruppe erstellen oder per Join-Code beitreten
 
 import { useState } from 'react';
 import {

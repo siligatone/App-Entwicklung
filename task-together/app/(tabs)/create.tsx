@@ -1,7 +1,4 @@
-/**
- * Aufgabe erstellen — Titel (Pflicht) + Beschreibung (optional).
- * Optional: Aufgabe einem anderen Demo-User zuweisen.
- */
+// Neue Aufgabe erstellen
 
 import { useEffect, useState } from 'react';
 import {

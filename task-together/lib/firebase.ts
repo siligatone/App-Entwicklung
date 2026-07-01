@@ -1,13 +1,4 @@
-/**
- * Firebase-Initialisierung für TaskTogether.
- *
- * Konfiguration kommt aus Umgebungsvariablen (.env-Datei).
- * EXPO_PUBLIC_* Variablen sind im Client-Code sicher zugänglich,
- * da der Firebase-API-Key by Design öffentlich ist —
- * echter Schutz läuft über Firestore Security Rules.
- *
- * Für Produktion: Security Rules auf authentifizierte Nutzer einschränken.
- */
+// Firebase initialisieren
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
@@ -21,7 +12,7 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Verhindert doppelte Initialisierung (z. B. bei Hot Reload)
+// doppelte Init verhindern (Hot Reload)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const db = getFirestore(app);
