@@ -43,7 +43,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high: { label: 'Hoch', color: Colors.danger },
 };
 
-// Tageszellen für Monatsgrid erzeugen — immer 42 Zellen (6 Wochen) für feste Höhe
+// Tageszellen für Monatsgrid erzeugen — letzte Reihe immer vervollständigen
 function getMonthGrid(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1);
   // Montag = 0, Sonntag = 6 (JS: Sonntag = 0, Montag = 1)
@@ -53,7 +53,7 @@ function getMonthGrid(year: number, month: number): (number | null)[] {
   const cells: (number | null)[] = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length < 42) cells.push(null);
+  while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
 
@@ -256,15 +256,17 @@ export default function CalendarScreen() {
           return (
             <TouchableOpacity
               key={`day-${day}`}
-              style={[
-                styles.dayCell,
-                isToday && !isSelected && styles.dayCellToday,
-                isSelected && !isToday && styles.dayCellSelected,
-                isSelected && isToday && styles.dayCellTodaySelected,
-              ]}
+              style={styles.dayCell}
               onPress={() => setSelectedDay(day)}
               activeOpacity={0.6}
             >
+              {/* Highlight-Kreis absolut positioniert, beeinflusst Text-Zentrierung nicht */}
+              <View style={[
+                styles.dayCellHighlight,
+                isToday && !isSelected && styles.dayCellHighlightToday,
+                isSelected && !isToday && styles.dayCellHighlightSelected,
+                isSelected && isToday && styles.dayCellHighlightTodaySelected,
+              ]} />
               <Text style={[
                 styles.dayText,
                 isToday && !isSelected && styles.dayTextToday,
@@ -504,20 +506,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    borderWidth: 2,
-    borderColor: 'transparent',
+  },
+  // Highlight-Kreis absolut, damit borderWidth den Text nicht verschiebt
+  dayCellHighlight: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    left: 2,
+    right: 2,
     borderRadius: BorderRadius.full,
   },
-  dayCellToday: {
+  dayCellHighlightToday: {
     backgroundColor: Colors.success + '18',
+    borderWidth: 2,
     borderColor: Colors.success,
   },
-  dayCellSelected: {
+  dayCellHighlightSelected: {
     backgroundColor: Colors.primary,
   },
-  dayCellTodaySelected: {
+  dayCellHighlightTodaySelected: {
     backgroundColor: Colors.success,
-    borderColor: Colors.success,
   },
   dayText: {
     fontSize: Typography.sizeSM,
