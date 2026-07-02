@@ -19,9 +19,17 @@ import { createUserProfile } from '../lib/user-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
 
 const EMOJI_OPTIONS = [
-  '🦊', '🚀', '🌟', '🎯', '🐻', '🦋', '🌈', '🔥',
-  '🍀', '💎', '🎨', '🦁', '🐱', '🌻', '⚡', '🎵',
-  '🏄', '🎲', '🦄', '🐧', '🍕', '🍚', '🎸', '🌊',
+  // Tiere
+  '🦊', '🐻', '🦁', '🐱', '🐶', '🐼', '🐨', '🐯',
+  '🦋', '🦅', '🐺', '🐸', '🐧', '🦜', '🐬', '🦝',
+  // Sport & Aktivität
+  '⚽', '🏀', '🎾', '🏊', '🚴', '🏋️', '🏄', '🎿',
+  // Hobbys & Arbeit
+  '🎵', '🎨', '📷', '🎮', '📚', '🎸', '✈️', '🏕️',
+  // Essen
+  '🍕', '🍣', '🍜', '🍚', '☕',
+  // Sonstiges
+  '💎', '🚀', '⚡',
 ];
 
 export default function OnboardingScreen() {
