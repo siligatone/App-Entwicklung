@@ -14,6 +14,7 @@ import {
   FlatList,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserId, cacheProfile } from '../lib/storage';
 import { createUserProfile } from '../lib/user-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
@@ -64,6 +65,7 @@ export default function OnboardingScreen() {
   }
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
     <KeyboardAvoidingView
       style={styles.keyboardView}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -150,13 +152,17 @@ export default function OnboardingScreen() {
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardView: {
+  safeArea: {
     flex: 1,
     backgroundColor: Colors.backgroundPrimary,
+  },
+  keyboardView: {
+    flex: 1,
   },
   scroll: {
     flex: 1,
