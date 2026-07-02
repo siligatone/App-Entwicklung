@@ -260,20 +260,21 @@ export default function CalendarScreen() {
               onPress={() => setSelectedDay(day)}
               activeOpacity={0.6}
             >
-              {/* Highlight-Kreis absolut positioniert, beeinflusst Text-Zentrierung nicht */}
+              {/* Highlight-Kreis als normaler Inner-View — Text ist darin zentriert */}
               <View style={[
-                styles.dayCellHighlight,
-                isToday && !isSelected && styles.dayCellHighlightToday,
-                isSelected && !isToday && styles.dayCellHighlightSelected,
-                isSelected && isToday && styles.dayCellHighlightTodaySelected,
-              ]} />
-              <Text style={[
-                styles.dayText,
-                isToday && !isSelected && styles.dayTextToday,
-                isSelected && styles.dayTextSelected,
+                styles.dayCellInner,
+                isToday && !isSelected && styles.dayCellInnerToday,
+                isSelected && !isToday && styles.dayCellInnerSelected,
+                isSelected && isToday && styles.dayCellInnerTodaySelected,
               ]}>
-                {day}
-              </Text>
+                <Text style={[
+                  styles.dayText,
+                  isToday && !isSelected && styles.dayTextToday,
+                  isSelected && styles.dayTextSelected,
+                ]}>
+                  {day}
+                </Text>
+              </View>
               {hasDeadline && (
                 <View style={[
                   styles.deadlineDot,
@@ -507,24 +508,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
-  // Highlight-Kreis absolut, damit borderWidth den Text nicht verschiebt
-  dayCellHighlight: {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    left: 2,
-    right: 2,
+  // Inner-View für Highlight — enthält den Text, so bleibt Zentrierung immer korrekt
+  dayCellInner: {
+    width: '76%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: BorderRadius.full,
   },
-  dayCellHighlightToday: {
+  dayCellInnerToday: {
     backgroundColor: Colors.success + '18',
     borderWidth: 2,
     borderColor: Colors.success,
   },
-  dayCellHighlightSelected: {
+  dayCellInnerSelected: {
     backgroundColor: Colors.primary,
   },
-  dayCellHighlightTodaySelected: {
+  dayCellInnerTodaySelected: {
     backgroundColor: Colors.success,
   },
   dayText: {
