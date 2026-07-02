@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, type Task } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -182,25 +183,30 @@ export default function CalendarScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Kalender laden...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Kalender laden...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorEmoji}>😕</Text>
-        <Text style={styles.errorText}>Fehler: {error}</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.centered}>
+          <Text style={styles.errorEmoji}>😕</Text>
+          <Text style={styles.errorText}>Fehler: {error}</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   const isCurrentMonth = viewYear === todayYear && viewMonth === todayMonth;
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       {/* Monatsnavigation */}
       <View style={styles.navRow}>
@@ -386,15 +392,19 @@ export default function CalendarScreen() {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.backgroundPrimary,
+  },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.backgroundPrimary,
     padding: Spacing.lg,
   },
   loadingText: {

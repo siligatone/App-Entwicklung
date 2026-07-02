@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, completeTask, reopenTask, deleteTask, type Task, type Priority } from '../../lib/task-service';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../../constants/design';
@@ -218,6 +219,7 @@ export default function TasksScreen() {
   }
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.container}
@@ -448,10 +450,15 @@ export default function TasksScreen() {
         );
       })}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.backgroundPrimary,
+  },
   scroll: {
     flex: 1,
     backgroundColor: Colors.backgroundPrimary,

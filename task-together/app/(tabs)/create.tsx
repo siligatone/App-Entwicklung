@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { createTask, generateId, type UserSnapshot, type Priority, type Subtask } from '../../lib/task-service';
 import { subscribeToUsers, subscribeToUserProfile, addUserLabel, type UserProfile } from '../../lib/user-service';
@@ -149,6 +150,7 @@ export default function CreateScreen() {
   }
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
     <KeyboardAvoidingView
       style={styles.keyboardView}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -480,13 +482,17 @@ export default function CreateScreen() {
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardView: {
+  safeArea: {
     flex: 1,
     backgroundColor: Colors.backgroundPrimary,
+  },
+  keyboardView: {
+    flex: 1,
   },
   scroll: {
     flex: 1,

@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCachedProfile, getCachedGroup, clearUserData, clearGroupCache, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { deleteUserProfile } from '../../lib/user-service';
 import { leaveGroup, deleteGroup, subscribeToGroup, type Group } from '../../lib/group-service';
@@ -165,13 +166,16 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       {/* Profil-Karte */}
       <View style={styles.profileCard}>
@@ -270,19 +274,22 @@ export default function ProfileScreen() {
         )}
       </TouchableOpacity>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.backgroundPrimary,
+  },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.backgroundPrimary,
   },
   scroll: {
     flex: 1,
-    backgroundColor: Colors.backgroundPrimary,
   },
   container: {
     padding: Spacing.lg,

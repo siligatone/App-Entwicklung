@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
 import { subscribeToTasks, type Task } from '../../lib/task-service';
 import { prioritizeTasksLocally, type PrioritySuggestion, type PriorityInputTask } from '../../lib/task-assistant';
@@ -195,38 +196,45 @@ export default function DashboardScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Dashboard laden...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Dashboard laden...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorEmoji}>😕</Text>
-        <Text style={styles.errorText}>Fehler: {error}</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.centered}>
+          <Text style={styles.errorEmoji}>😕</Text>
+          <Text style={styles.errorText}>Fehler: {error}</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (tasks.length === 0) {
     return (
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-        <Text style={styles.screenTitle}>Übersicht</Text>
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyEmoji}>📊</Text>
-          <Text style={styles.emptyTitle}>Noch keine Daten</Text>
-          <Text style={styles.emptySubtitle}>
-            Erstelle Aufgaben, um hier Statistiken zu sehen.
-          </Text>
-        </View>
-      </ScrollView>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
+          <Text style={styles.screenTitle}>Übersicht</Text>
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyEmoji}>📊</Text>
+            <Text style={styles.emptyTitle}>Noch keine Daten</Text>
+            <Text style={styles.emptySubtitle}>
+              Erstelle Aufgaben, um hier Statistiken zu sehen.
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <Text style={styles.screenTitle}>Übersicht</Text>
 
@@ -451,15 +459,19 @@ export default function DashboardScreen() {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.backgroundPrimary,
+  },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.backgroundPrimary,
     padding: Spacing.lg,
   },
   loadingText: {
