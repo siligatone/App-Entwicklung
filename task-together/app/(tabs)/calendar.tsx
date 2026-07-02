@@ -8,7 +8,13 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
+
+// Exakte Pixelgrößen für Kalenderzellen — vermeidet Rundungsfehler durch %+aspectRatio in Yoga
+const SCREEN_W = Dimensions.get('window').width;
+const CELL_SIZE = Math.floor((SCREEN_W - 2 * Spacing.md) / 7);
+const INNER_SIZE = Math.floor(CELL_SIZE * 0.76);
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCachedProfile, getCachedGroup, type CachedProfile, type CachedGroup } from '../../lib/storage';
@@ -482,7 +488,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   weekdayCell: {
-    flex: 1,
+    width: CELL_SIZE,
     alignItems: 'center',
     paddingVertical: Spacing.xs,
   },
@@ -498,22 +504,21 @@ const styles = StyleSheet.create({
     alignContent: 'flex-start',
     backgroundColor: Colors.backgroundCard,
     borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 0,
+    overflow: 'hidden',
     marginBottom: Spacing.lg,
     ...Shadows.sm,
   },
   dayCell: {
-    width: '14.28%',
-    aspectRatio: 1,
+    width: CELL_SIZE,
+    height: CELL_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
-  // Inner-View für Highlight — enthält den Text, so bleibt Zentrierung immer korrekt
+  // Inner-View für Highlight — Text ist darin zentriert, feste Pixelgröße ohne Rundungsfehler
   dayCellInner: {
-    width: '76%',
-    aspectRatio: 1,
+    width: INNER_SIZE,
+    height: INNER_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: BorderRadius.full,
