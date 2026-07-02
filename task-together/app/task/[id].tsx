@@ -102,7 +102,7 @@ export default function TaskDetailScreen() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
-  const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [newLabelText, setNewLabelText] = useState('');
   const [groupDetail, setGroupDetail] = useState<Group | null>(null);
   const [userDetail, setUserDetail] = useState<UserProfile | null>(null);
@@ -192,6 +192,7 @@ export default function TaskDetailScreen() {
     setSaveError(null);
     setSuggestions([]);
     setAddedSuggestions(new Set());
+    setSuggestError(null);
     setEditing(true);
   }
 
@@ -200,6 +201,7 @@ export default function TaskDetailScreen() {
     setSaveError(null);
     setSuggestions([]);
     setAddedSuggestions(new Set());
+    setSuggestError(null);
   }
 
   async function handleSave() {
@@ -298,7 +300,7 @@ export default function TaskDetailScreen() {
             setAddedSuggestions(new Set());
             const result = await suggestSubtasksAI(editTitle.trim(), editDescription.trim() || undefined);
             setSuggestions(result.suggestions);
-            setSuggestSource(result.source);
+            setSuggestError(result.error);
             setSuggestLoading(false);
           }}
           disabled={editTitle.trim().length === 0 || suggestLoading}
@@ -311,6 +313,12 @@ export default function TaskDetailScreen() {
             </Text>
           )}
         </TouchableOpacity>
+
+        {suggestError && suggestions.length === 0 && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{suggestError}</Text>
+          </View>
+        )}
 
         {suggestions.length > 0 && (
           <View style={styles.suggestionsCard}>

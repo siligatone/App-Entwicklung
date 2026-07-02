@@ -213,15 +213,17 @@ const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const GEMINI_TIMEOUT = 8000;
 
-// Unteraufgaben vorschlagen, Gemini wenn verfügbar
+const API_ERROR = 'Fehler bei der API-Anfrage, versuche es später erneut.';
+
+// Unteraufgaben vorschlagen via Gemini
 export async function suggestSubtasksAI(
   title: string,
   description?: string,
-): Promise<{ suggestions: string[]; source: 'ai' | 'local' }> {
+): Promise<{ suggestions: string[]; error: string | null }> {
   const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
   if (!apiKey || apiKey === 'HIER_EINTRAGEN') {
-    return { suggestions: [], source: 'ai' };
+    return { suggestions: [], error: null };
   }
 
   const taskText = description?.trim()
@@ -258,7 +260,7 @@ export async function suggestSubtasksAI(
     clearTimeout(timeout);
 
     if (!response.ok) {
-      return { suggestions: [], source: 'ai' };
+      return { suggestions: [], error: API_ERROR };
     }
 
     const data = await response.json();
@@ -266,27 +268,26 @@ export async function suggestSubtasksAI(
 
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      return { suggestions: [], source: 'ai' };
+      return { suggestions: [], error: API_ERROR };
     }
 
     const parsed: unknown = JSON.parse(jsonMatch[0]);
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return { suggestions: [], source: 'ai' };
+      return { suggestions: [], error: API_ERROR };
     }
 
-    // validieren
     const validated = parsed
       .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       .map((s) => (s.length > 200 ? s.slice(0, 200) : s))
       .slice(0, 10);
 
     if (validated.length === 0) {
-      return { suggestions: [], source: 'ai' };
+      return { suggestions: [], error: API_ERROR };
     }
 
-    return { suggestions: validated, source: 'ai' };
+    return { suggestions: validated, error: null };
   } catch {
-    return { suggestions: [], source: 'ai' };
+    return { suggestions: [], error: API_ERROR };
   }
 }

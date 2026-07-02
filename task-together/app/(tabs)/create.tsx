@@ -40,7 +40,7 @@ export default function CreateScreen() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
-  const [suggestSource, setSuggestSource] = useState<'ai' | 'local' | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [taskScope, setTaskScope] = useState<'personal' | 'group'>('personal');
   const [newLabelText, setNewLabelText] = useState('');
   const [groupDetail, setGroupDetail] = useState<Group | null>(null);
@@ -139,7 +139,7 @@ export default function CreateScreen() {
       setSubtasks([]);
       setSuggestions([]);
       setAddedSuggestions(new Set());
-      setSuggestSource(null);
+      setSuggestError(null);
       setSaving(false);
       router.replace('/(tabs)');
     } catch (err) {
@@ -227,7 +227,7 @@ export default function CreateScreen() {
             setAddedSuggestions(new Set());
             const result = await suggestSubtasksAI(trimmedTitle, description.trim() || undefined);
             setSuggestions(result.suggestions);
-            setSuggestSource(result.source);
+            setSuggestError(result.error);
             setSuggestLoading(false);
           }}
           disabled={trimmedTitle.length === 0 || suggestLoading}
@@ -240,6 +240,12 @@ export default function CreateScreen() {
             </Text>
           )}
         </TouchableOpacity>
+
+        {suggestError && suggestions.length === 0 && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{suggestError}</Text>
+          </View>
+        )}
 
         {suggestions.length > 0 && (
           <View style={styles.suggestionsCard}>
