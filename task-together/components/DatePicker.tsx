@@ -1,4 +1,4 @@
-// Inline-Datepicker als Monatsgrid, keine externe Dependency
+// Inline-Datepicker als Monatsgrid, gleiche Darstellung wie Kalender-Tab
 
 import { useMemo, useState } from 'react';
 import {
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Colors, Spacing, Typography, BorderRadius, Shadows, MIN_TOUCH_TARGET } from '../constants/design';
+import { Colors, Spacing, Typography, BorderRadius } from '../constants/design';
 
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
@@ -24,6 +24,7 @@ function getMonthGrid(year: number, month: number): (number | null)[] {
   const cells: (number | null)[] = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
 
@@ -40,6 +41,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
 
   const [viewYear, setViewYear] = useState(value?.getFullYear() ?? todayYear);
   const [viewMonth, setViewMonth] = useState(value?.getMonth() ?? todayMonth);
+  const [cellSize, setCellSize] = useState(0);
 
   const grid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
@@ -47,29 +49,19 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
   const selectedMonth = value?.getMonth() ?? null;
   const selectedDay = value?.getDate() ?? null;
 
+  const innerSize = cellSize > 0 ? Math.floor(cellSize * 0.76) : 0;
+
   const canGoPrev = viewYear > todayYear || (viewYear === todayYear && viewMonth > todayMonth);
 
   function goToPrevMonth() {
     if (!canGoPrev) return;
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear(viewYear - 1);
-    } else {
-      setViewMonth(viewMonth - 1);
-    }
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+    else setViewMonth(viewMonth - 1);
   }
 
   function goToNextMonth() {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear(viewYear + 1);
-    } else {
-      setViewMonth(viewMonth + 1);
-    }
-  }
-
-  function selectDay(day: number) {
-    onChange(new Date(viewYear, viewMonth, day));
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+    else setViewMonth(viewMonth + 1);
   }
 
   const formattedValue = value
@@ -112,11 +104,17 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
         ))}
       </View>
 
-      {/* Grid */}
-      <View style={styles.grid}>
-        {grid.map((day, index) => {
+      {/* Grid — onLayout misst die echte Breite für exakte Zellgrößen */}
+      <View
+        style={styles.grid}
+        onLayout={(e) => {
+          const w = Math.floor(e.nativeEvent.layout.width);
+          setCellSize(Math.floor(w / 7));
+        }}
+      >
+        {cellSize > 0 && grid.map((day, index) => {
           if (day === null) {
-            return <View key={`e-${index}`} style={styles.dayCell} />;
+            return <View key={`e-${index}`} style={{ width: cellSize, height: cellSize }} />;
           }
 
           const isToday = viewYear === todayYear && viewMonth === todayMonth && day === todayDay;
@@ -127,23 +125,27 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
             <TouchableOpacity
               key={`d-${day}`}
               style={[
-                styles.dayCell,
+                { width: cellSize, height: cellSize, justifyContent: 'center', alignItems: 'center' },
                 isPast && styles.dayCellPast,
-                isToday && !isSelected && styles.dayCellToday,
-                isSelected && styles.dayCellSelected,
               ]}
-              onPress={() => { if (!isPast) selectDay(day); }}
+              onPress={() => { if (!isPast) onChange(new Date(viewYear, viewMonth, day)); }}
               disabled={isPast}
               activeOpacity={isPast ? 1 : 0.6}
             >
-              <Text style={[
-                styles.dayText,
-                isPast && styles.dayTextPast,
-                isToday && !isSelected && styles.dayTextToday,
-                isSelected && styles.dayTextSelected,
+              <View style={[
+                { width: innerSize, height: innerSize, borderRadius: BorderRadius.full, justifyContent: 'center', alignItems: 'center' },
+                isToday && !isSelected && styles.dayCellInnerToday,
+                isSelected && styles.dayCellInnerSelected,
               ]}>
-                {day}
-              </Text>
+                <Text style={[
+                  styles.dayText,
+                  isPast && styles.dayTextPast,
+                  isToday && !isSelected && styles.dayTextToday,
+                  isSelected && styles.dayTextSelected,
+                ]}>
+                  {day}
+                </Text>
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -154,7 +156,6 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
 
 const styles = StyleSheet.create({
   container: {},
-  // --- Auswahl-Anzeige ---
   selectionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -175,7 +176,6 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     fontWeight: Typography.weightMedium,
   },
-  // --- Navigation ---
   navRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -202,7 +202,6 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weightSemiBold,
     color: Colors.textPrimary,
   },
-  // --- Wochentage ---
   weekdayRow: {
     flexDirection: 'row',
     marginBottom: Spacing.xs,
@@ -217,26 +216,20 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weightMedium,
     color: Colors.textTertiary,
   },
-  // --- Grid ---
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-  },
-  dayCell: {
-    width: '14.28%',
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    alignContent: 'flex-start',
   },
   dayCellPast: {
     opacity: 0.3,
   },
-  dayCellToday: {
-    borderRadius: BorderRadius.full,
+  dayCellInnerToday: {
     backgroundColor: Colors.primary + '12',
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
-  dayCellSelected: {
-    borderRadius: BorderRadius.full,
+  dayCellInnerSelected: {
     backgroundColor: Colors.primary,
   },
   dayText: {

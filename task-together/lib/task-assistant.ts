@@ -1,104 +1,4 @@
-// Unteraufgaben-Vorschläge und Aufgaben-Priorisierung
-// Gemini API wenn API-Key vorhanden, sonst lokaler Fallback
-
-interface Rule {
-  keywords: string[];
-  suggestions: string[];
-}
-
-const rules: Rule[] = [
-  {
-    keywords: ['präsentation', 'folien', 'vortrag', 'slides', 'pitch'],
-    suggestions: [
-      'Inhalte und Kernaussagen sammeln',
-      'Folienstruktur und Gliederung erstellen',
-      'Folien gestalten und Grafiken einfügen',
-      'Demo oder Live-Beispiel vorbereiten',
-      'Vortrag üben und Zeitplan prüfen',
-    ],
-  },
-  {
-    keywords: ['doku', 'dokumentation', 'bericht', 'readme', 'anleitung'],
-    suggestions: [
-      'Gliederung und Kapitelstruktur erstellen',
-      'Inhalte ausarbeiten und formulieren',
-      'Screenshots und Diagramme ergänzen',
-      'Quellen und Referenzen einfügen',
-      'Korrekturlesen und Formatierung prüfen',
-    ],
-  },
-  {
-    keywords: ['test', 'bug', 'fehler', 'fix', 'debug'],
-    suggestions: [
-      'Problem reproduzieren und Schritte dokumentieren',
-      'Ursache analysieren und eingrenzen',
-      'Lösung implementieren',
-      'Fix testen und Seiteneffekte prüfen',
-      'Ergebnis dokumentieren',
-    ],
-  },
-  {
-    keywords: ['code', 'implementier', 'develop', 'programm', 'feature', 'funktion'],
-    suggestions: [
-      'Anforderungen klären und abgrenzen',
-      'Technischen Ansatz planen',
-      'Implementierung umsetzen',
-      'Code testen und reviewen',
-      'Änderungen dokumentieren',
-    ],
-  },
-  {
-    keywords: ['meeting', 'besprechung', 'termin', 'call', 'workshop'],
-    suggestions: [
-      'Agenda vorbereiten',
-      'Teilnehmer einladen und informieren',
-      'Unterlagen zusammenstellen',
-      'Protokoll während des Meetings führen',
-      'Ergebnisse und nächste Schritte festhalten',
-    ],
-  },
-  {
-    keywords: ['design', 'ui', 'ux', 'layout', 'mockup', 'wireframe'],
-    suggestions: [
-      'Anforderungen und Zielgruppe klären',
-      'Wireframes oder Skizzen erstellen',
-      'Design ausarbeiten',
-      'Feedback einholen und einarbeiten',
-      'Design-Assets exportieren',
-    ],
-  },
-  {
-    keywords: ['recherche', 'analyse', 'vergleich', 'evaluier', 'bewert'],
-    suggestions: [
-      'Fragestellung und Kriterien definieren',
-      'Quellen und Informationen sammeln',
-      'Ergebnisse strukturieren und auswerten',
-      'Empfehlung formulieren',
-      'Ergebnisse präsentieren',
-    ],
-  },
-];
-
-const fallbackSuggestions = [
-  'Aufgabe konkretisieren und Ziel definieren',
-  'Benötigte Informationen sammeln',
-  'Nächste Schritte planen',
-  'Umsetzung durchführen',
-  'Ergebnis prüfen und abschließen',
-];
-
-// lokal, kein Netzwerk
-export function suggestSubtasks(title: string): string[] {
-  const lower = title.toLowerCase();
-
-  for (const rule of rules) {
-    if (rule.keywords.some((kw) => lower.includes(kw))) {
-      return rule.suggestions;
-    }
-  }
-
-  return fallbackSuggestions;
-}
+// Unteraufgaben-Vorschläge und Aufgaben-Priorisierung via Gemini API
 
 // Typen für Priorisierung
 export interface PriorityInputTask {
@@ -321,7 +221,7 @@ export async function suggestSubtasksAI(
   const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
   if (!apiKey || apiKey === 'HIER_EINTRAGEN') {
-    return { suggestions: suggestSubtasks(title), source: 'local' };
+    return { suggestions: [], source: 'ai' };
   }
 
   const taskText = description?.trim()
@@ -358,7 +258,7 @@ export async function suggestSubtasksAI(
     clearTimeout(timeout);
 
     if (!response.ok) {
-      return { suggestions: suggestSubtasks(title), source: 'local' };
+      return { suggestions: [], source: 'ai' };
     }
 
     const data = await response.json();
@@ -366,13 +266,13 @@ export async function suggestSubtasksAI(
 
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      return { suggestions: suggestSubtasks(title), source: 'local' };
+      return { suggestions: [], source: 'ai' };
     }
 
     const parsed: unknown = JSON.parse(jsonMatch[0]);
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return { suggestions: suggestSubtasks(title), source: 'local' };
+      return { suggestions: [], source: 'ai' };
     }
 
     // validieren
@@ -382,11 +282,11 @@ export async function suggestSubtasksAI(
       .slice(0, 10);
 
     if (validated.length === 0) {
-      return { suggestions: suggestSubtasks(title), source: 'local' };
+      return { suggestions: [], source: 'ai' };
     }
 
     return { suggestions: validated, source: 'ai' };
   } catch {
-    return { suggestions: suggestSubtasks(title), source: 'local' };
+    return { suggestions: [], source: 'ai' };
   }
 }

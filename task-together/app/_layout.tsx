@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Colors } from '../constants/design';
+import { TouchableOpacity, Text } from 'react-native';
+import { Colors, Typography } from '../constants/design';
 
 export default function RootLayout() {
   return (
@@ -28,10 +29,19 @@ export default function RootLayout() {
         <Stack.Screen name="group-setup" options={{ headerShown: false }} />
         <Stack.Screen
           name="task/[id]"
-          options={{
+          options={({ navigation }) => ({
             title: 'Aufgabe',
-            headerBackTitle: 'Zurück',
-          }}
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={{ paddingRight: 16, paddingVertical: 8 }}
+              >
+                <Text style={{ color: Colors.primary, fontSize: Typography.sizeMD }}>
+                  ‹ Zurück
+                </Text>
+              </TouchableOpacity>
+            ),
+          })}
         />
       </Stack>
     </>

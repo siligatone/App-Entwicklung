@@ -244,7 +244,7 @@ export default function CreateScreen() {
         {suggestions.length > 0 && (
           <View style={styles.suggestionsCard}>
             <Text style={styles.suggestionsLabel}>
-              {suggestSource === 'ai' ? 'KI-Vorschläge' : 'Lokale Vorschläge'} — antippen zum Hinzufügen:
+              KI-Vorschläge — antippen zum Hinzufügen:
             </Text>
             {suggestions.map((s) => {
               const isAdded = addedSuggestions.has(s);
