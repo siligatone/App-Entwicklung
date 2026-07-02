@@ -495,9 +495,11 @@ const styles = StyleSheet.create({
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignContent: 'flex-start',
     backgroundColor: Colors.backgroundCard,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 0,
     marginBottom: Spacing.lg,
     ...Shadows.sm,
   },
