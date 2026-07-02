@@ -61,7 +61,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="create"
         options={{
-          title: 'Neue Aufgabe',
+          title: 'Erstellen',
           headerShown: false,
           tabBarIcon: ({ color }) => (
             <Text style={{ fontSize: 20, color }}>➕</Text>

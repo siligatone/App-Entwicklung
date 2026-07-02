@@ -499,13 +499,14 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: Spacing.lg,
-    paddingTop: Spacing.xl,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
   },
   screenTitle: {
     fontSize: Typography.sizeXXL,
     fontWeight: Typography.weightBold,
     color: Colors.textPrimary,
+    marginTop: Spacing.sm,
     marginBottom: Spacing.lg,
   },
   scopeToggle: {

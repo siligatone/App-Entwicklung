@@ -43,7 +43,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high: { label: 'Hoch', color: Colors.danger },
 };
 
-// Tageszellen für Monatsgrid erzeugen
+// Tageszellen für Monatsgrid erzeugen — immer 42 Zellen (6 Wochen) für feste Höhe
 function getMonthGrid(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1);
   // Montag = 0, Sonntag = 6 (JS: Sonntag = 0, Montag = 1)
@@ -53,6 +53,7 @@ function getMonthGrid(year: number, month: number): (number | null)[] {
   const cells: (number | null)[] = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length < 42) cells.push(null);
   return cells;
 }
 
@@ -223,12 +224,14 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Heute-Button */}
-      {!isCurrentMonth && (
-        <TouchableOpacity style={styles.todayButton} onPress={goToToday}>
-          <Text style={styles.todayButtonText}>Heute</Text>
-        </TouchableOpacity>
-      )}
+      {/* Heute-Button — immer im Layout, nur unsichtbar wenn aktueller Monat */}
+      <TouchableOpacity
+        style={[styles.todayButton, isCurrentMonth && { opacity: 0 }]}
+        onPress={goToToday}
+        disabled={isCurrentMonth}
+      >
+        <Text style={styles.todayButtonText}>Heute</Text>
+      </TouchableOpacity>
 
       {/* Wochentags-Header */}
       <View style={styles.weekdayRow}>
@@ -501,20 +504,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: BorderRadius.full,
   },
   dayCellToday: {
-    borderRadius: BorderRadius.full,
     backgroundColor: Colors.success + '18',
-    borderWidth: 2,
     borderColor: Colors.success,
   },
   dayCellSelected: {
-    borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary,
   },
   dayCellTodaySelected: {
-    borderRadius: BorderRadius.full,
     backgroundColor: Colors.success,
+    borderColor: Colors.success,
   },
   dayText: {
     fontSize: Typography.sizeSM,
