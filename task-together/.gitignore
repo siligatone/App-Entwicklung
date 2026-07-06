@@ -42,3 +42,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# KI-Tool-Dateien (nicht versionieren)
+.claude/
+CLAUDE.md
+AGENTS.md
+.env.example
